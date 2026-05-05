@@ -93,15 +93,19 @@ func (s *SQLite) GetTables(ctx context.Context, tables ...string) ([]*Table, err
 	return dbTables, err
 }
 
-// PrepareGetColumnsOfTableStmt prepares the statement for retrieving the
-// columns of a specific table for a given database. Unused in Sqlite.
-func (s *SQLite) PrepareGetColumnsOfTableStmt(context.Context) error {
+// GetColumnsOfTables executes the statement for retrieving columns.
+func (s *SQLite) GetColumnsOfTables(ctx context.Context, tables []*Table) error {
+	for i := range tables {
+		err := s.getColumnsOfTable(ctx, tables[i])
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
-// GetColumnsOfTable executes the statement for retrieving the columns of a
-// specific table for a given database.
-func (s *SQLite) GetColumnsOfTable(ctx context.Context, table *Table) error {
+func (s *SQLite) getColumnsOfTable(ctx context.Context, table *Table) error {
 	type column struct {
 		Name         string         `db:"name"`
 		DataType     string         `db:"type"`
@@ -118,7 +122,7 @@ func (s *SQLite) GetColumnsOfTable(ctx context.Context, table *Table) error {
 	`, table.Name)
 	if err != nil {
 		if s.Verbose {
-			fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTable(%v)\r\n", table.Name)
+			fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTables(%v)\r\n", table.Name)
 			fmt.Fprintf(os.Stderr, "> database: %q\r\n", s.DbName)
 		}
 		return err

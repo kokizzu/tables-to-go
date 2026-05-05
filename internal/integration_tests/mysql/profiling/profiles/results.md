@@ -4,70 +4,86 @@
 
 - Scenario: `TestIntegrationProfiling/mysql 8`
 - Workload: full testdata set (342 tables)
-- Artifacts: `cpu.pprof`, `heap.pprof`, `allocs.pprof`
+- Comparison mode: repeated isolated runs (7 baseline + 7 changed)
+- Batches:
+  - baseline: `runs/baseline/20260505-173911`
+  - changed: `runs/changed/20260505-174330`
+- Artifacts per run: `cpu.pprof`, `heap.pprof`, `allocs.pprof`
 
-## Commands used
+## Method
 
-```bash
-go tool pprof -top -cum -nodecount=30 cpu.pprof
-go tool pprof -top -cum -nodecount=30 -focus \
-  github.com/fraenky8/tables-to-go/v2 cpu.pprof
-go tool pprof -top -cum -sample_index=alloc_space -nodecount=30 -focus \
-  github.com/fraenky8/tables-to-go/v2 allocs.pprof
-go tool pprof -top -sample_index=inuse_space heap.pprof
-```
+- Collected runs via `internal/integration_tests/collect-profiling-runs.sh` with
+  `-count=1`, one scenario per test invocation.
+- Compared wall time using median + average from `summary.tsv`.
+- Representative profiles used for hotspot comparison:
+  - baseline representative: `run-01`
+  - changed representative: `run-02`
+- Diff check used changed profile with baseline as `-base`.
 
-## Top CPU hotspots (top 5)
+## Run-time comparison (baseline vs changed)
 
-1. `runtime.cgocall` (80.00% cumulative)
-   - Dominant cost; mostly syscall/driver boundary work.
-2. `pkg/output.FileWriter.Write` (75.00% cumulative)
-   - Per-file write path is expensive across many output files.
-3. `os.WriteFile` (70.00% cumulative)
-   - File I/O dominates generation runtime.
-4. `os.OpenFile` path (40.00% cumulative)
-   - Open/create cost is substantial due many files.
-5. `pkg/database.(*MySQL).GetColumnsOfTable` (20.00% cumulative)
-   - Per-table metadata query loop is a visible DB hotspot.
+- Median wall time: `12s` -> `11s` (**-8.33%**)
+- Average wall time: `11.857s` -> `10.714s` (**-9.64%**)
+- Range:
+  - baseline: `11s..13s`
+  - changed: `10s..12s`
 
-## Top allocation hotspots (top 5)
+## Top 5 CPU hotspots (baseline)
 
-1. `golang.org/x/text/transform.String` (18.43% flat)
-   - Called by casing conversion in naming pipeline.
-2. `go/format.Source` pipeline (16.12% cumulative)
-   - Includes parser/printer allocations per generated file.
-3. `pkg/database.(*MySQL).GetColumnsOfTable` + `sqlx` scan (13.82% cumulative)
-   - Metadata scan allocates heavily for large schema runs.
-4. `internal/cli.(*App).formatColumnName` (11.52% cumulative)
-   - Repeated case conversion and string shaping.
-5. `go/parser.(*parser).parseFieldDecl` (9.21% cumulative)
-   - Part of formatting overhead in `go/format.Source`.
+1. `pkg/output.FileWriter.Write` / `os.WriteFile`
+2. `runtime.cgocall` / syscall boundary
+3. `os.OpenFile` path
+4. `pkg/database.(*MySQL).GetColumnsOfTable`
+5. `go/format.Source` via output decorators
 
-## Interpretation
+## Top 5 allocation hotspots (baseline)
 
-- CPU is dominated by many small file writes plus DB metadata calls.
-- Memory is dominated by name casing, formatting, and DB scanning.
-- This profile gives strong signal for both DB and output stages.
-- Since profiling scenarios run in one test process, treat alloc/heap values as
-  scenario-guided rather than perfectly isolated.
+1. `golang.org/x/text/transform.String`
+2. `pkg/output` format/decorator path (`go/format.Source`)
+3. `pkg/database.(*MySQL).GetColumnsOfTable` + `sqlx` scan
+4. `internal/cli.(*App).formatColumnName`
+5. parser/printer allocations under formatting path
+
+## Top 5 CPU hotspots (changed)
+
+1. `pkg/output.FileWriter.Write` / `os.WriteFile`
+2. `runtime.cgocall` / syscall boundary
+3. `os.OpenFile` path
+4. output decorator + formatting path (`go/format.Source`)
+5. remaining file close/write syscall path
+
+## Top 5 allocation hotspots (changed)
+
+1. `golang.org/x/text/transform.String`
+2. `pkg/output` format/decorator path (`go/format.Source`)
+3. `pkg/database.(*MySQL).GetColumnsOfTables`
+4. `pkg/database.attachMySQLColumnsToTables`
+5. `internal/cli` naming path (`formatColumnName`, `camelCaseString`)
+
+## Priority shift (baseline -> changed)
+
+- CPU: per-table DB metadata hotspot (`GetColumnsOfTable`) dropped out of top
+  CPU list; output write/format is now dominant.
+- Alloc: DB allocation moved from singular query loop to bulk mapping helpers.
+- Overall: wall-time improved with a modest memory/allocation tradeoff.
 
 ## Prioritized optimization candidates (1-5)
 
-1. Batch column metadata retrieval for all selected tables in one query.
+1. Reduce output formatting/decorator overhead in `pkg/output`.
    - Impact: high; Risk: medium.
-2. Reduce per-file format overhead in `pkg/output`.
+2. Reduce file I/O overhead (open/write churn) in write path.
    - Impact: high; Risk: medium.
-3. Cache repeated casing/name transformations in `internal/cli`.
+3. Cache repeated casing and naming transforms in `internal/cli`.
    - Impact: medium; Risk: low.
-4. Reduce scan/mapping allocations in DB metadata fetch path.
+4. Reduce allocation churn in `attachMySQLColumnsToTables`.
    - Impact: medium; Risk: low/medium.
-5. Evaluate bounded concurrency for independent table generation/writes.
-   - Impact: medium/high; Risk: medium/high.
+5. Tune bulk metadata scan/mapping structures for lower alloc footprint.
+   - Impact: medium; Risk: medium.
 
 ## Success metrics for follow-up optimizations
 
-- End-to-end profiled run time: target >= 20% reduction.
-- `GetColumnsOfTable` cumulative CPU: target >= 30% reduction.
-- `FileWriter.Write` cumulative CPU: target >= 20% reduction.
-- `alloc_space` under `internal/cli` + `pkg/output`: target >= 15% reduction.
+- End-to-end wall time: additional >= 10% reduction from changed baseline.
+- `FileWriter.Write` cumulative CPU: >= 20% reduction.
+- `alloc_space` in `pkg/output` + `internal/cli`: >= 15% reduction.
+- `alloc_space` in `attachMySQLColumnsToTables`: >= 20% reduction.
 - Output correctness: no diff against expected generated files.

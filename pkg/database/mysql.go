@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"strings"
@@ -100,46 +101,95 @@ func (mysql *MySQL) GetTables(ctx context.Context, tables ...string) ([]*Table, 
 	return dbTables, err
 }
 
-// PrepareGetColumnsOfTableStmt prepares the statement for retrieving the
-// columns of a specific table for a given database.
-func (mysql *MySQL) PrepareGetColumnsOfTableStmt(ctx context.Context) (err error) {
-
-	mysql.GetColumnsOfTableStmt, err = mysql.PreparexContext(ctx, `
-		SELECT
-		  ordinal_position AS ordinal_position,
-		  column_name AS column_name,
-		  column_comment AS column_comment,
-		  LOWER(data_type) AS data_type,
-		  column_default AS column_default,
-		  is_nullable AS is_nullable,
-		  character_maximum_length AS character_maximum_length,
-		  numeric_precision AS numeric_precision,
-		  column_key AS column_key,
-		  extra AS extra
-		FROM information_schema.columns
-		WHERE table_name = ?
-		AND table_schema = ?
-		ORDER BY ordinal_position
-	`)
-
-	return err
+type mysqlColumnRow struct {
+	TableName              string         `db:"table_name"`
+	Name                   string         `db:"column_name"`
+	Comment                string         `db:"column_comment"`
+	DataType               string         `db:"data_type"`
+	IsNullable             string         `db:"is_nullable"`
+	ColumnKey              string         `db:"column_key"`
+	Extra                  string         `db:"extra"`
+	DefaultValue           sql.NullString `db:"column_default"`
+	CharacterMaximumLength sql.NullInt64  `db:"character_maximum_length"`
+	NumericPrecision       sql.NullInt64  `db:"numeric_precision"`
+	OrdinalPosition        int            `db:"ordinal_position"`
 }
 
-// GetColumnsOfTable executes the statement for retrieving the columns of a
-// specific table for a given database.
-func (mysql *MySQL) GetColumnsOfTable(ctx context.Context, table *Table) (err error) {
+// GetColumnsOfTables executes the query for retrieving columns.
+func (mysql *MySQL) GetColumnsOfTables(ctx context.Context, tables []*Table) error {
+	if len(tables) == 0 {
+		return nil
+	}
 
-	err = mysql.GetColumnsOfTableStmt.SelectContext(ctx, &table.Columns, table.Name, mysql.DbName)
+	args := make([]any, 0, len(tables)+1)
+	args = append(args, mysql.DbName)
+	for i := range tables {
+		args = append(args, tables[i].Name)
+	}
 
-	if mysql.Settings.Verbose {
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTable(%v)\r\n", table.Name)
+	in := "(?" + strings.Repeat(",?", len(tables)-1) + ")"
+
+	query := `
+		SELECT
+			table_name AS table_name,
+			ordinal_position AS ordinal_position,
+			column_name AS column_name,
+			column_comment AS column_comment,
+			LOWER(data_type) AS data_type,
+			column_default AS column_default,
+			is_nullable AS is_nullable,
+			character_maximum_length AS character_maximum_length,
+			numeric_precision AS numeric_precision,
+			column_key AS column_key,
+			extra AS extra
+		FROM information_schema.columns
+		WHERE table_schema = ?
+		AND table_name IN ` + in + `
+		ORDER BY table_name, ordinal_position
+	`
+
+	var rows []mysqlColumnRow
+	err := mysql.SelectContext(ctx, &rows, query, args...)
+	if err != nil {
+		if mysql.Settings.Verbose {
+			fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTables(%v)\r\n", args[1:])
 			fmt.Fprintf(os.Stderr, "> schema: %q\r\n", mysql.Schema)
 			fmt.Fprintf(os.Stderr, "> dbName: %q\r\n", mysql.DbName)
 		}
+
+		return err
 	}
 
-	return err
+	attachMySQLColumnsToTables(tables, rows)
+
+	return nil
+}
+
+func attachMySQLColumnsToTables(tables []*Table, rows []mysqlColumnRow) {
+	tableByName := make(map[string]*Table, len(tables))
+	for i := range tables {
+		tableByName[tables[i].Name] = tables[i]
+	}
+
+	for i := range rows {
+		table, ok := tableByName[rows[i].TableName]
+		if !ok {
+			continue
+		}
+
+		table.Columns = append(table.Columns, Column{
+			OrdinalPosition:        rows[i].OrdinalPosition,
+			Name:                   rows[i].Name,
+			Comment:                rows[i].Comment,
+			DataType:               rows[i].DataType,
+			DefaultValue:           rows[i].DefaultValue,
+			IsNullable:             rows[i].IsNullable,
+			CharacterMaximumLength: rows[i].CharacterMaximumLength,
+			NumericPrecision:       rows[i].NumericPrecision,
+			ColumnKey:              rows[i].ColumnKey,
+			Extra:                  rows[i].Extra,
+		})
+	}
 }
 
 // IsPrimaryKey checks if the column belongs to the primary key.

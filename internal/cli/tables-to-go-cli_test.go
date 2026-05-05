@@ -55,13 +55,8 @@ func (db *mockDB) GetTables(ctx context.Context, tables ...string) ([]*database.
 	return args.Get(0).([]*database.Table), nil
 }
 
-func (db *mockDB) PrepareGetColumnsOfTableStmt(ctx context.Context) error {
-	args := db.Called(ctx)
-	return args.Error(0)
-}
-
-func (db *mockDB) GetColumnsOfTable(ctx context.Context, table *database.Table) error {
-	args := db.Called(ctx, table)
+func (db *mockDB) GetColumnsOfTables(ctx context.Context, tables []*database.Table) error {
+	args := db.Called(ctx, tables)
 	return args.Error(0)
 }
 
@@ -550,10 +545,7 @@ func TestApp_Run(t *testing.T) {
 						On("GetTables", anyCtx).
 						Return([]*database.Table{table}, nil)
 					mdb.
-						On("PrepareGetColumnsOfTableStmt", anyCtx).
-						Return(nil)
-					mdb.
-						On("GetColumnsOfTable", anyCtx, table).
+						On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 						Return(nil)
 
 					w := newMockWriter()
@@ -610,10 +602,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -652,10 +641,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -695,10 +681,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -742,10 +725,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -790,10 +770,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -853,13 +830,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table1, table2}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table1).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table2).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table1, table2}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -924,10 +895,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -966,10 +934,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1009,10 +974,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1056,10 +1018,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1104,10 +1063,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1167,13 +1123,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table1, table2}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table1).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table2).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table1, table2}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1238,10 +1188,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1280,10 +1227,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1323,10 +1267,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1370,10 +1311,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1418,10 +1356,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1481,13 +1416,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table1, table2}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table1).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table2).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table1, table2}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1552,10 +1481,7 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1594,10 +1520,7 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1637,10 +1560,7 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1684,10 +1604,7 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1732,10 +1649,7 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1795,13 +1709,7 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table1, table2}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table1).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table2).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table1, table2}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1866,10 +1774,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1908,10 +1813,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1951,10 +1853,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1998,10 +1897,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -2046,10 +1942,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -2109,13 +2002,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table1, table2}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table1).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table2).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table1, table2}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -2184,10 +2071,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -2227,10 +2111,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -2271,10 +2152,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -2319,10 +2197,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -2368,10 +2243,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -2432,13 +2304,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table1, table2}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table1).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table2).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table1, table2}).
 							Return(nil)
 
 						w := newMockWriter()

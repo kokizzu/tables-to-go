@@ -64,8 +64,9 @@ func (app *App) Run(ctx context.Context) error {
 		app.printf("> number of tables: %v\r\n", len(tables))
 	}
 
-	if err = app.db.PrepareGetColumnsOfTableStmt(ctx); err != nil {
-		return fmt.Errorf("could not prepare the get-column-statement: %w", err)
+	err = app.db.GetColumnsOfTables(ctx, tables)
+	if err != nil {
+		return fmt.Errorf("could not get columns of tables: %w", err)
 	}
 
 	for _, table := range tables {
@@ -80,22 +81,10 @@ func (app *App) Run(ctx context.Context) error {
 
 		if app.settings.Verbose {
 			app.printf("> processing table %q\r\n", table.Name)
-		}
-
-		if err = app.db.GetColumnsOfTable(ctx, table); err != nil {
-			if !app.settings.Force {
-				return fmt.Errorf("could not get columns of table %q: %w", table.Name, err)
-			}
-			app.printf("could not get columns of table %q: %v\n", table.Name, err)
-			continue
-		}
-
-		if app.settings.Verbose {
 			app.printf("\t> number of columns: %v\r\n", len(table.Columns))
 		}
 
 		tableName, content, err := app.createTableStructString(table)
-
 		if err != nil {
 			if !app.settings.Force {
 				return fmt.Errorf("could not create string for table %q: %w", table.Name, err)

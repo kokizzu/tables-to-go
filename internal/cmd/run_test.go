@@ -54,13 +54,8 @@ func (db *mockDB) GetTables(ctx context.Context, tables ...string) ([]*database.
 	return args.Get(0).([]*database.Table), nil
 }
 
-func (db *mockDB) PrepareGetColumnsOfTableStmt(ctx context.Context) error {
-	args := db.Called(ctx)
-	return args.Error(0)
-}
-
-func (db *mockDB) GetColumnsOfTable(ctx context.Context, table *database.Table) error {
-	args := db.Called(ctx, table)
+func (db *mockDB) GetColumnsOfTables(ctx context.Context, tables []*database.Table) error {
+	args := db.Called(ctx, tables)
 	return args.Error(0)
 }
 
@@ -455,7 +450,7 @@ func Test_Run(t *testing.T) {
 					On("GetTables", anyCtx).
 					Return([]*database.Table{}, nil)
 				db.
-					On("PrepareGetColumnsOfTableStmt", anyCtx).
+					On("GetColumnsOfTables", anyCtx, []*database.Table{}).
 					Return(nil)
 				db.
 					On("Close").
@@ -480,7 +475,7 @@ func Test_Run(t *testing.T) {
 					On("GetTables", anyCtx).
 					Return([]*database.Table{}, nil)
 				db.
-					On("PrepareGetColumnsOfTableStmt", anyCtx).
+					On("GetColumnsOfTables", anyCtx, []*database.Table{}).
 					Return(nil)
 				db.
 					On("Close").

@@ -4,71 +4,86 @@
 
 - Scenario: `TestIntegrationProfiling/sqlite 3`
 - Workload: full testdata set (30 tables)
-- Artifacts: `cpu.pprof`, `heap.pprof`, `allocs.pprof`
+- Comparison mode: repeated isolated runs (7 baseline + 7 changed)
+- Batches:
+  - baseline: `runs/baseline/20260505-173911`
+  - changed: `runs/changed/20260505-174330`
+- Artifacts per run: `cpu.pprof`, `heap.pprof`, `allocs.pprof`
 
-## Commands used
+## Method
 
-```bash
-go tool pprof -top -cum -nodecount=30 cpu.pprof
-go tool pprof -top -cum -nodecount=30 -focus \
-  github.com/fraenky8/tables-to-go/v2 cpu.pprof
-go tool pprof -top -cum -sample_index=alloc_space -nodecount=30 -focus \
-  github.com/fraenky8/tables-to-go/v2 allocs.pprof
-go tool pprof -top -sample_index=inuse_space heap.pprof
-```
+- Collected runs via `internal/integration_tests/collect-profiling-runs.sh` with
+  `-count=1`, one scenario per test invocation.
+- Compared wall time using median + average from `summary.tsv`.
+- Representative profiles used for hotspot comparison:
+  - baseline representative: `run-04` (2s run)
+  - changed representative: `run-05` (2s run)
+- Diff check used changed profile with baseline as `-base`.
 
-## Top CPU hotspots (top 5)
+## Run-time comparison (baseline vs changed)
 
-1. `runtime.cgocall` (100% cumulative in this sample)
-   - Sample duration is very small; CPU profile has low signal.
-2. `pkg/output.FileWriter.Write` (100% cumulative path overlap)
-   - Visible in call path but dominated by short run noise.
-3. `os.WriteFile` (100% cumulative path overlap)
-   - Same note: overlap from low sample count.
-4. `os.OpenFile` path (100% cumulative path overlap)
-   - Same caveat.
-5. `internal/cli.(*App).Run` (100% cumulative path overlap)
-   - Same caveat.
+- Median wall time: `1s` -> `1s` (**0%**)
+- Average wall time: `1.286s` -> `1.143s` (**-11.11%**)
+- Range:
+  - baseline: `1s..2s`
+  - changed: `1s..2s`
 
-## Top allocation hotspots (top 5)
+## Top 5 CPU hotspots (baseline, low confidence)
 
-1. `golang.org/x/text/transform.String` (14.49% flat)
-   - Name casing conversion remains top allocator.
-2. `pkg/output` formatting path via `go/format.Source` (17.61% cumulative)
-   - Formatting still significant despite smaller table count.
-3. `sqlx` scan path (`scanAll`) (11.38% cumulative)
-   - Metadata scan remains visible.
-4. `internal/cli.(*App).formatColumnName` (11.38% cumulative)
-   - Repeated per-column name normalization.
-5. `runtime/pprof` profile writing path (up to 12.87% cumulative)
-   - Profiling overhead itself is prominent at this short runtime.
+1. `runtime.cgocall`
+2. `pkg/output.FileWriter.Write`
+3. `os.WriteFile`
+4. `os.OpenFile` / open path overlap
+5. top-level run path overlap (`internal/cli.(*App).Run`)
 
-## Interpretation
+## Top 5 allocation hotspots (baseline, low confidence)
 
-- CPU signal is too short for high-confidence ranking.
-- Allocation profile is still useful and consistent with MySQL/Postgres:
-  naming conversion + formatting + metadata mapping dominate internal costs.
-- For SQLite, run multiple measured iterations in one profile session to
-  improve CPU signal quality before optimization decisions.
-- Since profiling scenarios run in one test process, treat alloc/heap values as
-  scenario-guided rather than perfectly isolated.
+1. `runtime/pprof.StartCPUProfile` (profiling overhead)
+2. `runtime/pprof` artifact emission path
+3. `pkg/database.(*SQLite).GetColumnsOfTable` + `sqlx` scan
+4. `pkg/output` formatting path (`go/format.Source`)
+5. directory/glob loading path during fixture setup
+
+## Top 5 CPU hotspots (changed, low confidence)
+
+1. `runtime.cgocall`
+2. `pkg/output.FileWriter.Write`
+3. `os.WriteFile`
+4. `os.OpenFile` / open path overlap
+5. top-level run path overlap (`internal/cli.(*App).Run`)
+
+## Top 5 allocation hotspots (changed, low confidence)
+
+1. `runtime/pprof.StartCPUProfile` (profiling overhead)
+2. `pkg/output` formatting path (`go/format.Source`)
+3. printer allocations in format path (`go/printer` internals)
+4. `internal/cli` struct generation path
+5. remaining profiling/writer support allocations
+
+## Priority shift (baseline -> changed)
+
+- CPU: no reliable reordering; sample size remains too small (typically ~10ms).
+- Alloc: changed representative run shows more formatter/profiler overhead,
+  but confidence is low due short runtime and overhead proportion.
+- Overall: optimization priorities remain measurement-first for SQLite.
 
 ## Prioritized optimization candidates (1-5)
 
-1. Re-run SQLite profiling with repeated measured loops to increase CPU signal.
-   - Impact: high for confidence; Risk: low.
-2. Reduce formatting overhead per generated file.
+1. Increase SQLite measured work per profiling run for higher-signal CPU data.
+   - Impact: high (confidence); Risk: low.
+2. Re-profile and re-rank hotspots after signal quality improves.
+   - Impact: high (decision quality); Risk: low.
+3. If stable, reduce output formatting/decorator overhead in `pkg/output`.
    - Impact: medium; Risk: medium.
-3. Cache repeated casing transformations.
-   - Impact: medium; Risk: low.
-4. Reduce allocation churn in DB scan/mapping path.
+4. Reduce file write/open overhead for generated outputs.
+   - Impact: low/medium; Risk: medium.
+5. Reassess SQLite DB mapping alloc path only after higher-signal rerun.
    - Impact: low/medium; Risk: low.
-5. Keep concurrency experiments lower priority for SQLite workload size.
-   - Impact: low; Risk: medium.
 
 ## Success metrics for follow-up optimizations
 
-- Generate a higher-signal CPU profile (target >= 200ms sampled CPU).
-- End-to-end profiled run time: target >= 10-15% reduction.
-- `alloc_space` in naming + formatting paths: target >= 10% reduction.
+- CPU sample volume per run: target >= 200ms sampled CPU.
+- Stable hotspot ordering across repeated runs (at least 5 runs).
+- End-to-end wall time: target >= 10% reduction after signal improvement.
+- `alloc_space` in formatting path: target >= 10% reduction.
 - Output correctness: no diff against expected generated files.
