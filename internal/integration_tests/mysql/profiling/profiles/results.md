@@ -75,10 +75,10 @@
    - Impact: high; Risk: medium.
 3. Cache repeated casing and naming transforms in `internal/cli`.
    - Impact: medium; Risk: low.
-4. Reduce allocation churn in `attachMySQLColumnsToTables`.
-   - Impact: medium; Risk: low/medium.
-5. Tune bulk metadata scan/mapping structures for lower alloc footprint.
-   - Impact: medium; Risk: medium.
+4. Reduce DB scan-path overhead in `GetColumnsOfTables` (`database/sql` arg/scan churn).
+   - Impact: low/medium; Risk: low.
+5. Measure output-only optimizations first, then re-rank DB-side work.
+   - Impact: medium (decision quality); Risk: low.
 
 ## Success metrics for follow-up optimizations
 
@@ -87,3 +87,83 @@
 - `alloc_space` in `pkg/output` + `internal/cli`: >= 15% reduction.
 - `alloc_space` in `attachMySQLColumnsToTables`: >= 20% reduction.
 - Output correctness: no diff against expected generated files.
+
+## Update: Changed batch `20260505-190911` (stdlib `rows.Scan` streaming)
+
+This batch reflects the follow-up change that removed `StructScan` and switched
+to stdlib row scanning while streaming rows directly into `Table.Columns`.
+
+### Run-time comparison (latest changed)
+
+- Latest changed (`20260505-190911`) median: `12s`
+- Latest changed (`20260505-190911`) average: `11.714s`
+
+Compared with baseline (`20260505-173911`):
+
+- Median: `12s` -> `12s` (**0%**)
+- Average: `11.857s` -> `11.714s` (**-1.20%**)
+
+Compared with previous changed (`20260505-174330`):
+
+- Median: `11s` -> `12s` (**regression**)
+- Average: `10.714s` -> `11.714s` (**regression**)
+
+### Hotspot impact check
+
+- CPU remains dominated by output write path (`FileWriter.Write`, `os.WriteFile`,
+  `runtime.cgocall`).
+- Old singular DB hotspot remains absent.
+- Allocation profile no longer shows `attachMySQLColumnsToTables` as a top node,
+  which is expected after direct streaming attach.
+
+### Verdict for this change
+
+- **No clear end-to-end performance gain** from the stdlib scan streaming change
+  on MySQL in this run set.
+- It simplified DB mapping internals and removed one mapping hotspot, but wall
+  time did not improve versus the earlier changed batch.
+
+## Update: Changed batch `20260506-093308`
+
+This batch reflects the current direct `rows.Scan` path after dropping the
+over-allocation prealloc experiment.
+
+### Run-time comparison (latest changed)
+
+- Latest changed (`20260506-093308`) median: `11s`
+- Latest changed (`20260506-093308`) average: `11.000s`
+
+Compared with baseline (`20260505-173911`):
+
+- Median: `12s` -> `11s` (**-8.33%**)
+- Average: `11.857s` -> `11.000s` (**-7.23%**)
+
+Compared with previous changed (`20260505-174330`):
+
+- Median: `11s` -> `11s` (**no change**)
+- Average: `10.714s` -> `11.000s` (**+2.67%**, slower)
+
+Compared with stashed changed (`20260505-190911`):
+
+- Median: `12s` -> `11s` (**improved**)
+- Average: `11.714s` -> `11.000s` (**-6.10%**)
+
+Compared with changed (`20260505-193236`):
+
+- Median: `12s` -> `11s` (**improved**)
+- Average: `11.857s` -> `11.000s` (**-7.23%**)
+
+### Hotspot impact check
+
+- CPU remains dominated by syscall/output path (`runtime.cgocall`).
+- Allocation representative total is lower than baseline representative:
+  `21.58MB` -> `18.49MB`.
+- The prior `attachMySQLColumnsToTables` alloc blow-up from `20260505-193236`
+  is no longer present as a top hotspot.
+
+### Verdict for this batch
+
+- Restores a clear MySQL improvement over baseline.
+- Slightly slower than the best earlier changed batch (`20260505-174330`) on
+  average, but in the same general performance band.
+- Allocation behavior is materially healthier than `20260505-193236`.

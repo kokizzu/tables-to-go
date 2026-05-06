@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"slices"
@@ -119,36 +118,25 @@ func (pg *Postgresql) GetTables(ctx context.Context, tables ...string) ([]*Table
 	return dbTables, err
 }
 
-type postgresqlColumnRow struct {
-	TableName              string         `db:"table_name"`
-	Name                   string         `db:"column_name"`
-	Comment                string         `db:"column_comment"`
-	DataType               string         `db:"data_type"`
-	IsNullable             string         `db:"is_nullable"`
-	DefaultValue           sql.NullString `db:"column_default"`
-	ConstraintName         sql.NullString `db:"constraint_name"`
-	ConstraintType         sql.NullString `db:"constraint_type"`
-	CharacterMaximumLength sql.NullInt64  `db:"character_maximum_length"`
-	NumericPrecision       sql.NullInt64  `db:"numeric_precision"`
-	OrdinalPosition        int            `db:"ordinal_position"`
-}
-
 // GetColumnsOfTables retrieves columns for all given tables.
 func (pg *Postgresql) GetColumnsOfTables(ctx context.Context, tables []*Table) error {
 	if len(tables) == 0 {
 		return nil
 	}
 
-	tableNames := make([]string, 0, len(tables))
+	var (
+		tableByName = make(map[string]*Table, len(tables))
+		tableNames  = make([]string, 0, len(tables))
+	)
 	for i := range tables {
+		tableByName[tables[i].Name] = tables[i]
 		tableNames = append(tableNames, tables[i].Name)
 	}
 
 	args := []any{pg.Schema}
 	in := pg.andInClause("LOWER(ic.table_name)", tableNames, &args)
 
-	var rows []postgresqlColumnRow
-	err := pg.SelectContext(ctx, &rows, `
+	rows, err := pg.QueryContext(ctx, `
 		SELECT
 			ic.table_name,
 			ic.ordinal_position,
@@ -187,37 +175,57 @@ func (pg *Postgresql) GetColumnsOfTables(ctx context.Context, tables []*Table) e
 
 		return err
 	}
+	defer rows.Close() //nolint:errcheck // Best effort close
 
-	attachPostgresqlColumnsToTables(tables, rows)
+	var (
+		tableName string
+		column    Column
+	)
+	for rows.Next() {
+		err = rows.Scan(
+			&tableName,
+			&column.OrdinalPosition,
+			&column.Name,
+			&column.Comment,
+			&column.DataType,
+			&column.DefaultValue,
+			&column.IsNullable,
+			&column.CharacterMaximumLength,
+			&column.NumericPrecision,
+			&column.ConstraintName,
+			&column.ConstraintType,
+		)
+		if err != nil {
+			if pg.Verbose {
+				fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTables(%v)\r\n", tableNames)
+				fmt.Fprintf(os.Stderr, "> schema: %q\r\n", pg.Schema)
+			}
 
-	return nil
-}
+			return err
+		}
 
-func attachPostgresqlColumnsToTables(tables []*Table, rows []postgresqlColumnRow) {
-	tableByName := make(map[string]*Table, len(tables))
-	for i := range tables {
-		tableByName[tables[i].Name] = tables[i]
-	}
-
-	for i := range rows {
-		table, ok := tableByName[rows[i].TableName]
+		table, ok := tableByName[tableName]
 		if !ok {
+			if pg.Settings.Verbose {
+				fmt.Fprintf(os.Stderr, "> Warning: specified table %q not found\r\n", tableName)
+			}
 			continue
 		}
 
-		table.Columns = append(table.Columns, Column{
-			OrdinalPosition:        rows[i].OrdinalPosition,
-			Name:                   rows[i].Name,
-			Comment:                rows[i].Comment,
-			DataType:               rows[i].DataType,
-			DefaultValue:           rows[i].DefaultValue,
-			IsNullable:             rows[i].IsNullable,
-			CharacterMaximumLength: rows[i].CharacterMaximumLength,
-			NumericPrecision:       rows[i].NumericPrecision,
-			ConstraintName:         rows[i].ConstraintName,
-			ConstraintType:         rows[i].ConstraintType,
-		})
+		table.Columns = append(table.Columns, column)
 	}
+
+	err = rows.Err()
+	if err != nil {
+		if pg.Verbose {
+			fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTables(%v)\r\n", tableNames)
+			fmt.Fprintf(os.Stderr, "> schema: %q\r\n", pg.Schema)
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 // IsPrimaryKey checks if the column belongs to the primary key.

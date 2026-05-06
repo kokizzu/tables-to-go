@@ -2,7 +2,6 @@ package database
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"strings"
@@ -101,24 +100,15 @@ func (mysql *MySQL) GetTables(ctx context.Context, tables ...string) ([]*Table, 
 	return dbTables, err
 }
 
-type mysqlColumnRow struct {
-	TableName              string         `db:"table_name"`
-	Name                   string         `db:"column_name"`
-	Comment                string         `db:"column_comment"`
-	DataType               string         `db:"data_type"`
-	IsNullable             string         `db:"is_nullable"`
-	ColumnKey              string         `db:"column_key"`
-	Extra                  string         `db:"extra"`
-	DefaultValue           sql.NullString `db:"column_default"`
-	CharacterMaximumLength sql.NullInt64  `db:"character_maximum_length"`
-	NumericPrecision       sql.NullInt64  `db:"numeric_precision"`
-	OrdinalPosition        int            `db:"ordinal_position"`
-}
-
 // GetColumnsOfTables executes the query for retrieving columns.
 func (mysql *MySQL) GetColumnsOfTables(ctx context.Context, tables []*Table) error {
 	if len(tables) == 0 {
 		return nil
+	}
+
+	tableByName := make(map[string]*Table, len(tables))
+	for i := range tables {
+		tableByName[tables[i].Name] = tables[i]
 	}
 
 	args := make([]any, 0, len(tables)+1)
@@ -148,8 +138,58 @@ func (mysql *MySQL) GetColumnsOfTables(ctx context.Context, tables []*Table) err
 		ORDER BY table_name, ordinal_position
 	`
 
-	var rows []mysqlColumnRow
-	err := mysql.SelectContext(ctx, &rows, query, args...)
+	rows, err := mysql.QueryContext(ctx, query, args...)
+	if err != nil {
+		if mysql.Settings.Verbose {
+			fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTables(%v)\r\n", args[1:])
+			fmt.Fprintf(os.Stderr, "> schema: %q\r\n", mysql.Schema)
+			fmt.Fprintf(os.Stderr, "> dbName: %q\r\n", mysql.DbName)
+		}
+
+		return err
+	}
+	defer rows.Close() //nolint:errcheck // Best effort close
+
+	var (
+		tableName string
+		column    Column
+	)
+	for rows.Next() {
+		err = rows.Scan(
+			&tableName,
+			&column.OrdinalPosition,
+			&column.Name,
+			&column.Comment,
+			&column.DataType,
+			&column.DefaultValue,
+			&column.IsNullable,
+			&column.CharacterMaximumLength,
+			&column.NumericPrecision,
+			&column.ColumnKey,
+			&column.Extra,
+		)
+		if err != nil {
+			if mysql.Settings.Verbose {
+				fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTables(%v)\r\n", args[1:])
+				fmt.Fprintf(os.Stderr, "> schema: %q\r\n", mysql.Schema)
+				fmt.Fprintf(os.Stderr, "> dbName: %q\r\n", mysql.DbName)
+			}
+
+			return err
+		}
+
+		table, ok := tableByName[tableName]
+		if !ok {
+			if mysql.Settings.Verbose {
+				fmt.Fprintf(os.Stderr, "> Warning: specified table %q not found\r\n", tableName)
+			}
+			continue
+		}
+
+		table.Columns = append(table.Columns, column)
+	}
+
+	err = rows.Err()
 	if err != nil {
 		if mysql.Settings.Verbose {
 			fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTables(%v)\r\n", args[1:])
@@ -160,36 +200,7 @@ func (mysql *MySQL) GetColumnsOfTables(ctx context.Context, tables []*Table) err
 		return err
 	}
 
-	attachMySQLColumnsToTables(tables, rows)
-
 	return nil
-}
-
-func attachMySQLColumnsToTables(tables []*Table, rows []mysqlColumnRow) {
-	tableByName := make(map[string]*Table, len(tables))
-	for i := range tables {
-		tableByName[tables[i].Name] = tables[i]
-	}
-
-	for i := range rows {
-		table, ok := tableByName[rows[i].TableName]
-		if !ok {
-			continue
-		}
-
-		table.Columns = append(table.Columns, Column{
-			OrdinalPosition:        rows[i].OrdinalPosition,
-			Name:                   rows[i].Name,
-			Comment:                rows[i].Comment,
-			DataType:               rows[i].DataType,
-			DefaultValue:           rows[i].DefaultValue,
-			IsNullable:             rows[i].IsNullable,
-			CharacterMaximumLength: rows[i].CharacterMaximumLength,
-			NumericPrecision:       rows[i].NumericPrecision,
-			ColumnKey:              rows[i].ColumnKey,
-			Extra:                  rows[i].Extra,
-		})
-	}
 }
 
 // IsPrimaryKey checks if the column belongs to the primary key.

@@ -76,10 +76,10 @@
    - Impact: high; Risk: medium.
 3. Cache repeated naming/casing transforms.
    - Impact: medium; Risk: low.
-4. Reduce allocation in `attachPostgresqlColumnsToTables`.
-   - Impact: medium; Risk: low/medium.
-5. Tune bulk DB scan/mapping memory structures.
-   - Impact: medium; Risk: medium.
+4. Reduce DB query/scan-path overhead in `GetColumnsOfTables` (`database/sql` argument conversion and scan work).
+   - Impact: low/medium; Risk: low.
+5. Re-profile after output-path changes before any deeper DB refactor.
+   - Impact: medium (decision quality); Risk: low.
 
 ## Success metrics for follow-up optimizations
 
@@ -88,3 +88,81 @@
 - `alloc_space` in `pkg/output` + `internal/cli`: >= 15% reduction.
 - `alloc_space` in `attachPostgresqlColumnsToTables`: >= 20% reduction.
 - Output correctness: no diff against expected generated files.
+
+## Update: Changed batch `20260505-190911` (stdlib `rows.Scan` streaming)
+
+This batch reflects the follow-up change that removed `StructScan` and switched
+to stdlib row scanning while streaming rows directly into `Table.Columns`.
+
+### Run-time comparison (latest changed)
+
+- Latest changed (`20260505-190911`) median: `4s`
+- Latest changed (`20260505-190911`) average: `4.429s`
+
+Compared with baseline (`20260505-173911`):
+
+- Median: `6s` -> `4s` (**-33.33%**)
+- Average: `5.571s` -> `4.429s` (**-20.50%**)
+
+Compared with previous changed (`20260505-174330`):
+
+- Median: `5s` -> `4s` (**improved**)
+- Average: `4.429s` -> `4.429s` (**no net change**)
+
+### Hotspot impact check
+
+- CPU remains dominated by output write path; per-table singular DB hotspot stays
+  absent.
+- Allocation diff against previous changed batch is small/noisy, but previous
+  attach helper hotspot is no longer expected after direct streaming attach.
+
+### Verdict for this change
+
+- **No strong additional gain** beyond the earlier bulk-query improvement, but
+  no clear regression either.
+- Primary bottleneck remains output formatting and file write path.
+
+## Update: Changed batch `20260506-093308`
+
+This batch reflects the current direct `rows.Scan` path after dropping the
+over-allocation prealloc experiment.
+
+### Run-time comparison (latest changed)
+
+- Latest changed (`20260506-093308`) median: `4s`
+- Latest changed (`20260506-093308`) average: `4.429s`
+
+Compared with baseline (`20260505-173911`):
+
+- Median: `6s` -> `4s` (**-33.33%**)
+- Average: `5.571s` -> `4.429s` (**-20.50%**)
+
+Compared with previous changed (`20260505-174330`):
+
+- Median: `4s` -> `4s` (**no change**)
+- Average: `4.429s` -> `4.429s` (**no change**)
+
+Compared with stashed changed (`20260505-190911`):
+
+- Median: `4s` -> `4s` (**no change**)
+- Average: `4.429s` -> `4.429s` (**no change**)
+
+Compared with changed (`20260505-193236`):
+
+- Median: `4s` -> `4s` (**no change**)
+- Average: `4.286s` -> `4.429s` (**+3.34%**, slower)
+
+### Hotspot impact check
+
+- CPU remains dominated by syscall/output path (`runtime.cgocall`).
+- Allocation representative total is effectively baseline-level:
+  `28.69MB` -> `28.38MB`.
+- The prior `attachPostgresqlColumnsToTables` alloc blow-up from
+  `20260505-193236` is gone; DB alloc now appears in normal query/scan paths.
+
+### Verdict for this batch
+
+- Keeps the strong Postgres win over baseline.
+- Roughly ties earlier good changed batches (`174330` and `190911`).
+- Slightly worse average than `193236`, but without the severe alloc regression
+  seen in that batch.

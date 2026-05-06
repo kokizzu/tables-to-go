@@ -73,12 +73,12 @@
    - Impact: high (confidence); Risk: low.
 2. Re-profile and re-rank hotspots after signal quality improves.
    - Impact: high (decision quality); Risk: low.
-3. If stable, reduce output formatting/decorator overhead in `pkg/output`.
+3. If signal stabilizes, reduce output formatting/decorator overhead in `pkg/output`.
    - Impact: medium; Risk: medium.
 4. Reduce file write/open overhead for generated outputs.
    - Impact: low/medium; Risk: medium.
-5. Reassess SQLite DB mapping alloc path only after higher-signal rerun.
-   - Impact: low/medium; Risk: low.
+5. Defer SQLite DB-specific mapping optimizations until a stable hotspot appears.
+   - Impact: medium (focus); Risk: low.
 
 ## Success metrics for follow-up optimizations
 
@@ -87,3 +87,69 @@
 - End-to-end wall time: target >= 10% reduction after signal improvement.
 - `alloc_space` in formatting path: target >= 10% reduction.
 - Output correctness: no diff against expected generated files.
+
+## Update: Changed batch `20260505-190911`
+
+SQLite adapter did not receive a comparable stdlib scan streaming change (it was
+already per-table and non-StructScan in the critical path), but the latest run
+set is included for completeness.
+
+### Run-time comparison (latest changed)
+
+- Latest changed (`20260505-190911`) median: `1s`
+- Latest changed (`20260505-190911`) average: `1.429s`
+
+Compared with baseline (`20260505-173911`):
+
+- Median: `1s` -> `1s` (**0%**)
+- Average: `1.286s` -> `1.429s` (**worse**)
+
+Compared with previous changed (`20260505-174330`):
+
+- Median: `1s` -> `1s` (**no change**)
+- Average: `1.143s` -> `1.429s` (**worse**)
+
+### Verdict for this change window
+
+- Still **inconclusive / low confidence** for SQLite due very short runtimes and
+  noisy profile samples.
+- No actionable optimization conclusion changes for SQLite from this batch.
+
+## Update: Changed batch `20260506-093308`
+
+### Run-time comparison (latest changed)
+
+- Latest changed (`20260506-093308`) median: `1s`
+- Latest changed (`20260506-093308`) average: `1.143s`
+
+Compared with baseline (`20260505-173911`):
+
+- Median: `1s` -> `1s` (**0%**)
+- Average: `1.286s` -> `1.143s` (**-11.11%**)
+
+Compared with previous changed (`20260505-174330`):
+
+- Median: `1s` -> `1s` (**no change**)
+- Average: `1.143s` -> `1.143s` (**no change**)
+
+Compared with stashed changed (`20260505-190911`):
+
+- Median: `1s` -> `1s` (**no change**)
+- Average: `1.429s` -> `1.143s` (**-20.01%**)
+
+Compared with changed (`20260505-193236`):
+
+- Median: `1s` -> `1s` (**no change**)
+- Average: `1.000s` -> `1.143s` (**+14.30%**, slower)
+
+### Hotspot impact check
+
+- CPU sample remains tiny (`10ms`) and fully dominated by `runtime.cgocall`.
+- Allocation profile is still mostly profiler/runtime/output-path noise.
+
+### Verdict for this batch
+
+- Directionally similar to `20260505-174330` and better than `20260505-190911`
+  on average.
+- Still low-confidence for optimization decisions due coarse wall-time granularity
+  and minimal CPU sample volume.
