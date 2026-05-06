@@ -12,7 +12,7 @@ const (
 
 // Writer represents an interface to write the produced struct content.
 type Writer interface {
-	Write(tableName string, content string) error
+	Write(tableName string, content []byte) error
 }
 
 // FileWriter is a writer that writes to a file given by the path and the table name.
@@ -33,7 +33,7 @@ func NewFileWriter(path string) *FileWriter {
 
 // Write is the implementation of the Writer interface. The FilerWriter writes
 // decorated content to the file specified by the given path and table name.
-func (w FileWriter) Write(tableName, content string) error {
+func (w FileWriter) Write(tableName string, content []byte) error {
 	fileName := path.Join(w.path, tableName+FileWriterExtension)
 
 	decorated, err := w.decorate(content)
@@ -41,11 +41,11 @@ func (w FileWriter) Write(tableName, content string) error {
 		return err
 	}
 
-	return os.WriteFile(fileName, []byte(decorated), 0666)
+	return os.WriteFile(fileName, decorated, 0666)
 }
 
 // decorate applies decorations like formatting.
-func (w FileWriter) decorate(content string) (decorated string, err error) {
+func (w FileWriter) decorate(content []byte) (decorated []byte, err error) {
 	for _, decorator := range w.decorators {
 		content, err = decorator.Decorate(content)
 		if err != nil {

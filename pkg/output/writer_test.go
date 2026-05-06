@@ -14,19 +14,19 @@ func TestFileWriter_Write(t *testing.T) {
 	tests := []struct {
 		desc      string
 		tableName string
-		content   string
+		content   []byte
 		isError   assert.ErrorAssertionFunc
 	}{
 		{
 			desc:      "valid table name and valid content should write a file",
 			tableName: "Bar",
-			content:   "package dto\ntype Bar struct {\nID int `db:\"id\"`\n}",
+			content:   []byte("package dto\ntype Bar struct {\nID int `db:\"id\"`\n}"),
 			isError:   assert.NoError,
 		},
 		{
 			desc:      "valid table name and invalid content should produce an error",
 			tableName: "Bar",
-			content:   "Lorem ipsum dolor sit amet, consectetur adipiscing elit",
+			content:   []byte("Lorem ipsum dolor sit amet, consectetur adipiscing elit"),
 			isError:   assert.Error,
 		},
 	}

@@ -11,25 +11,20 @@ func TestFormatDecorator_Decorate(t *testing.T) {
 
 	tests := []struct {
 		desc     string
-		input    string
-		expected string
+		input    []byte
+		expected []byte
 		isError  assert.ErrorAssertionFunc
 	}{
 		{
-			desc:  "well formed golang code should get decorated",
-			input: "package dto\ntype Bar struct {\nID int `db:\"id\"`\n}",
-			expected: `package dto
-
-type Bar struct {
-	ID int ` + "`db:\"id\"" + "`" + `
-}
-`,
-			isError: assert.NoError,
+			desc:     "well formed golang code should get decorated",
+			input:    []byte("package dto\ntype Bar struct {\nID int `db:\"id\"`\n}"),
+			expected: []byte("package dto\n\ntype Bar struct {\n\tID int `db:\"id\"`\n}\n"),
+			isError:  assert.NoError,
 		},
 		{
 			desc:     "arbitrary text throws error",
-			input:    "Lorem ipsum dolor sit amet, consectetur adipiscing elit",
-			expected: "",
+			input:    []byte("Lorem ipsum dolor sit amet, consectetur adipiscing elit"),
+			expected: []byte{},
 			isError:  assert.Error,
 		},
 	}

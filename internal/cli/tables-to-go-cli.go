@@ -98,7 +98,7 @@ func (app *App) Run(ctx context.Context) error {
 			fileName = strcase.ToSnake(fileName)
 		}
 
-		err = app.out.Write(fileName, content)
+		err = app.out.Write(fileName, []byte(content))
 		if err != nil {
 			if !app.settings.Force {
 				return fmt.Errorf("could not write struct for table %q: %w", table.Name, err)
