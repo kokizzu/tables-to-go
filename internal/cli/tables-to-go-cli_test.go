@@ -689,7 +689,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName *string `db:\"column_name\"`\n}",
+								"package dto\n\ntype TestTable struct {\nColumnName *string `db:\"column_name\"`\n}",
 							).
 							Return(nil)
 
@@ -778,7 +778,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName1 *string `db:\"column_name_1\"`\nColumnName2 string `db:\"column_name_2\"`\n}",
+								"package dto\n\ntype TestTable struct {\nColumnName1 *string `db:\"column_name_1\"`\nColumnName2 string `db:\"column_name_2\"`\n}",
 							).
 							Return(nil)
 
@@ -982,7 +982,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName *int `db:\"column_name\"`\n}",
+								"package dto\n\ntype TestTable struct {\nColumnName *int `db:\"column_name\"`\n}",
 							).
 							Return(nil)
 
@@ -1071,7 +1071,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName1 *int `db:\"column_name_1\"`\nColumnName2 int `db:\"column_name_2\"`\n}",
+								"package dto\n\ntype TestTable struct {\nColumnName1 *int `db:\"column_name_1\"`\nColumnName2 int `db:\"column_name_2\"`\n}",
 							).
 							Return(nil)
 
@@ -1275,7 +1275,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName *float64 `db:\"column_name\"`\n}",
+								"package dto\n\ntype TestTable struct {\nColumnName *float64 `db:\"column_name\"`\n}",
 							).
 							Return(nil)
 
@@ -1364,7 +1364,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName1 *float64 `db:\"column_name_1\"`\nColumnName2 float64 `db:\"column_name_2\"`\n}",
+								"package dto\n\ntype TestTable struct {\nColumnName1 *float64 `db:\"column_name_1\"`\nColumnName2 float64 `db:\"column_name_2\"`\n}",
 							).
 							Return(nil)
 
@@ -1861,7 +1861,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName *bool `db:\"column_name\"`\n}",
+								"package dto\n\ntype TestTable struct {\nColumnName *bool `db:\"column_name\"`\n}",
 							).
 							Return(nil)
 
@@ -1950,7 +1950,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName1 *bool `db:\"column_name_1\"`\nColumnName2 bool `db:\"column_name_2\"`\n}",
+								"package dto\n\ntype TestTable struct {\nColumnName1 *bool `db:\"column_name_1\"`\nColumnName2 bool `db:\"column_name_2\"`\n}",
 							).
 							Return(nil)
 
@@ -2160,7 +2160,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName *string `db:\"column_name\"`\n}",
+								"package dto\n\ntype TestTable struct {\nColumnName *string `db:\"column_name\"`\n}",
 							).
 							Return(nil)
 
@@ -2251,7 +2251,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName1 *string `db:\"column_name_1\"`\nColumnName2 string `db:\"column_name_2\"`\n}",
+								"package dto\n\ntype TestTable struct {\nColumnName1 *string `db:\"column_name_1\"`\nColumnName2 string `db:\"column_name_2\"`\n}",
 							).
 							Return(nil)
 
@@ -2704,3 +2704,4 @@ func TestWriteLineComments(t *testing.T) {
 		})
 	}
 }
+

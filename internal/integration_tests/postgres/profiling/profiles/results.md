@@ -166,3 +166,49 @@ Compared with changed (`20260505-193236`):
 - Roughly ties earlier good changed batches (`174330` and `190911`).
 - Slightly worse average than `193236`, but without the severe alloc regression
   seen in that batch.
+
+## Update: Changed batch `20260506-100845`
+
+### Run-time comparison (latest changed)
+
+- Latest changed (`20260506-100845`) median: `4s`
+- Latest changed (`20260506-100845`) average: `4.286s`
+
+Compared with baseline (`20260505-173911`):
+
+- Median: `6s` -> `4s` (**-33.33%**)
+- Average: `5.571s` -> `4.286s` (**-23.07%**)
+
+Compared with previous changed (`20260505-174330`):
+
+- Median: `4s` -> `4s` (**no change**)
+- Average: `4.429s` -> `4.286s` (**-3.23%**)
+
+Compared with stashed changed (`20260505-190911`):
+
+- Median: `4s` -> `4s` (**no change**)
+- Average: `4.429s` -> `4.286s` (**-3.23%**)
+
+Compared with changed (`20260505-193236`):
+
+- Median: `4s` -> `4s` (**no change**)
+- Average: `4.286s` -> `4.286s` (**no change**)
+
+Compared with changed (`20260506-093308`):
+
+- Median: `4s` -> `4s` (**no change**)
+- Average: `4.429s` -> `4.286s` (**-3.23%**)
+
+### Hotspot impact check
+
+- CPU remains dominated by syscall/output path (`runtime.cgocall`).
+- Allocation representative total stays below baseline representative:
+  `28.69MB` -> `22.22MB`.
+- No `attachPostgresqlColumnsToTables` allocation blow-up observed.
+
+### Verdict for this batch
+
+- Matches best observed Postgres average (`20260505-193236`) while retaining a
+  healthy allocation profile.
+- Remains clearly better than baseline and modestly better than `174330`,
+  `190911`, and `093308`.

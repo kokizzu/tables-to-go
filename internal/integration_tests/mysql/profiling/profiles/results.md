@@ -167,3 +167,49 @@ Compared with changed (`20260505-193236`):
 - Slightly slower than the best earlier changed batch (`20260505-174330`) on
   average, but in the same general performance band.
 - Allocation behavior is materially healthier than `20260505-193236`.
+
+## Update: Changed batch `20260506-100845`
+
+### Run-time comparison (latest changed)
+
+- Latest changed (`20260506-100845`) median: `11s`
+- Latest changed (`20260506-100845`) average: `11.143s`
+
+Compared with baseline (`20260505-173911`):
+
+- Median: `12s` -> `11s` (**-8.33%**)
+- Average: `11.857s` -> `11.143s` (**-6.02%**)
+
+Compared with previous changed (`20260505-174330`):
+
+- Median: `11s` -> `11s` (**no change**)
+- Average: `10.714s` -> `11.143s` (**+4.00%**, slower)
+
+Compared with stashed changed (`20260505-190911`):
+
+- Median: `12s` -> `11s` (**improved**)
+- Average: `11.714s` -> `11.143s` (**-4.87%**)
+
+Compared with changed (`20260505-193236`):
+
+- Median: `12s` -> `11s` (**improved**)
+- Average: `11.857s` -> `11.143s` (**-6.02%**)
+
+Compared with changed (`20260506-093308`):
+
+- Median: `11s` -> `11s` (**no change**)
+- Average: `11.000s` -> `11.143s` (**+1.30%**, slower)
+
+### Hotspot impact check
+
+- CPU remains dominated by syscall/output path (`runtime.cgocall`).
+- Allocation representative total remains below baseline representative:
+  `21.58MB` -> `15.39MB`.
+- No recurrence of `attachMySQLColumnsToTables` allocation blow-up.
+
+### Verdict for this batch
+
+- Maintains a solid MySQL gain over baseline.
+- Slightly regresses versus `20260506-093308` and clearly trails best batch
+  `20260505-174330` on average.
+- Allocation profile remains healthy and better than baseline.

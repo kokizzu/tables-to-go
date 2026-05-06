@@ -27,7 +27,6 @@ func NewFileWriter(path string) *FileWriter {
 		path: path,
 		decorators: []Decorator{
 			FormatDecorator{},
-			ImportDecorator{},
 		},
 	}
 }
@@ -45,7 +44,7 @@ func (w FileWriter) Write(tableName, content string) error {
 	return os.WriteFile(fileName, []byte(decorated), 0666)
 }
 
-// decorate applies some decorations like formatting and empty import removal.
+// decorate applies decorations like formatting.
 func (w FileWriter) decorate(content string) (decorated string, err error) {
 	for _, decorator := range w.decorators {
 		content, err = decorator.Decorate(content)

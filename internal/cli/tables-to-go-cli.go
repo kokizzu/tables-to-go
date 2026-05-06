@@ -117,10 +117,6 @@ type columnInfo struct {
 	isTemporal bool
 }
 
-func (c columnInfo) isNullableOrTemporal() bool {
-	return c.isNullable || c.isTemporal
-}
-
 func (app *App) createTableStructString(table *database.Table) (string, string, error) {
 
 	tableName := app.caser.String(app.settings.Prefix) + app.caser.String(table.Name) + app.caser.String(app.settings.Suffix)
@@ -245,8 +241,7 @@ func (app *App) generateHeader(content *strings.Builder, tableName string) {
 }
 
 func (app *App) generateImports(content *strings.Builder, columnInfo columnInfo) {
-
-	if !columnInfo.isNullableOrTemporal() && !app.settings.IsMastermindStructableRecorder && !app.settings.IsGormModel {
+	if !app.hasImports(columnInfo) {
 		return
 	}
 
@@ -271,6 +266,13 @@ func (app *App) generateImports(content *strings.Builder, columnInfo columnInfo)
 	}
 
 	content.WriteString(")\n\n")
+}
+
+func (app *App) hasImports(columnInfo columnInfo) bool {
+	return (columnInfo.isNullable && app.settings.IsNullTypeSQL()) ||
+		columnInfo.isTemporal ||
+		app.settings.IsMastermindStructableRecorder ||
+		app.settings.IsGormModel
 }
 
 func (app *App) mapDbColumnTypeToGoType(column database.Column) (goType string, columnInfo columnInfo) {

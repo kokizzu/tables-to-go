@@ -153,3 +153,46 @@ Compared with changed (`20260505-193236`):
   on average.
 - Still low-confidence for optimization decisions due coarse wall-time granularity
   and minimal CPU sample volume.
+
+## Update: Changed batch `20260506-100845`
+
+### Run-time comparison (latest changed)
+
+- Latest changed (`20260506-100845`) median: `1s`
+- Latest changed (`20260506-100845`) average: `1.143s`
+
+Compared with baseline (`20260505-173911`):
+
+- Median: `1s` -> `1s` (**0%**)
+- Average: `1.286s` -> `1.143s` (**-11.11%**)
+
+Compared with previous changed (`20260505-174330`):
+
+- Median: `1s` -> `1s` (**no change**)
+- Average: `1.143s` -> `1.143s` (**no change**)
+
+Compared with stashed changed (`20260505-190911`):
+
+- Median: `1s` -> `1s` (**no change**)
+- Average: `1.429s` -> `1.143s` (**-20.01%**)
+
+Compared with changed (`20260505-193236`):
+
+- Median: `1s` -> `1s` (**no change**)
+- Average: `1.000s` -> `1.143s` (**+14.30%**, slower)
+
+Compared with changed (`20260506-093308`):
+
+- Median: `1s` -> `1s` (**no change**)
+- Average: `1.143s` -> `1.143s` (**no change**)
+
+### Hotspot impact check
+
+- CPU sample remains tiny (`10ms`) and fully dominated by `runtime.cgocall`.
+- Allocation profile remains mostly profiler/runtime noise.
+
+### Verdict for this batch
+
+- Essentially identical to `20260506-093308` and `20260505-174330` at summary
+  level.
+- Still insufficient signal for new SQLite-specific optimization conclusions.
