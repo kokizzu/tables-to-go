@@ -247,14 +247,14 @@ func resolveVersionInfo(info VersionInfo) (VersionInfo, string, string) {
 		info.VersionTag = buildInfo.Main.Version
 	}
 
-	for _, s := range buildInfo.Settings {
-		switch s.Key {
+	for i := range buildInfo.Settings {
+		switch buildInfo.Settings[i].Key {
 		case "vcs.revision":
-			info.Revision = s.Value[:min(8, len(s.Value))]
+			info.Revision = buildInfo.Settings[i].Value[:min(8, len(buildInfo.Settings[i].Value))]
 		case "GOOS":
-			goOS = s.Value
+			goOS = buildInfo.Settings[i].Value
 		case "GOARCH":
-			goArch = s.Value
+			goArch = buildInfo.Settings[i].Value
 		}
 	}
 

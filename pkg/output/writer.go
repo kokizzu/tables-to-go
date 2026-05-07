@@ -46,8 +46,8 @@ func (w FileWriter) Write(tableName string, content []byte) error {
 
 // decorate applies decorations like formatting.
 func (w FileWriter) decorate(content []byte) (decorated []byte, err error) {
-	for _, decorator := range w.decorators {
-		content, err = decorator.Decorate(content)
+	for i := range w.decorators {
+		content, err = w.decorators[i].Decorate(content)
 		if err != nil {
 			return content, err
 		}

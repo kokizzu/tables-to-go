@@ -69,7 +69,7 @@ func (app *App) Run(ctx context.Context) error {
 		return fmt.Errorf("could not get columns of tables: %w", err)
 	}
 
-	for _, table := range tables {
+	for i := range tables {
 		select {
 		case <-ctx.Done():
 			if app.settings.Verbose {
@@ -80,16 +80,16 @@ func (app *App) Run(ctx context.Context) error {
 		}
 
 		if app.settings.Verbose {
-			app.printf("> processing table %q\r\n", table.Name)
-			app.printf("\t> number of columns: %v\r\n", len(table.Columns))
+			app.printf("> processing table %q\r\n", tables[i].Name)
+			app.printf("\t> number of columns: %v\r\n", len(tables[i].Columns))
 		}
 
-		tableName, content, err := app.createTableStructString(table)
+		tableName, content, err := app.createTableStructString(tables[i])
 		if err != nil {
 			if !app.settings.Force {
-				return fmt.Errorf("could not create string for table %q: %w", table.Name, err)
+				return fmt.Errorf("could not create string for table %q: %w", tables[i].Name, err)
 			}
-			app.printf("could not create string for table %q: %v\n", table.Name, err)
+			app.printf("could not create string for table %q: %v\n", tables[i].Name, err)
 			continue
 		}
 
@@ -101,9 +101,9 @@ func (app *App) Run(ctx context.Context) error {
 		err = app.out.Write(fileName, []byte(content))
 		if err != nil {
 			if !app.settings.Force {
-				return fmt.Errorf("could not write struct for table %q: %w", table.Name, err)
+				return fmt.Errorf("could not write struct for table %q: %w", tables[i].Name, err)
 			}
-			app.printf("could not write struct for table %q: %v\n", table.Name, err)
+			app.printf("could not write struct for table %q: %v\n", tables[i].Name, err)
 		}
 	}
 
@@ -150,8 +150,8 @@ func (app *App) createTableStructString(table *database.Table) (string, string, 
 		shouldGenerateComments = app.settings.ShouldGenerateComments()
 		shouldInlineComments   = app.settings.ShouldInlineComments()
 	)
-	for _, column := range table.Columns {
-		columnName, err := app.formatColumnName(column.Name, table.Name)
+	for i := range table.Columns {
+		columnName, err := app.formatColumnName(table.Columns[i].Name, table.Name)
 		if err != nil {
 			return "", "", err
 		}
@@ -166,10 +166,10 @@ func (app *App) createTableStructString(table *database.Table) (string, string, 
 		columns[columnName] = struct{}{}
 
 		if app.settings.VVerbose {
-			app.printf("\t\t> %v\r\n", column.Name)
+			app.printf("\t\t> %v\r\n", table.Columns[i].Name)
 		}
 
-		columnType, col := app.mapDbColumnTypeToGoType(column)
+		columnType, col := app.mapDbColumnTypeToGoType(table.Columns[i])
 
 		// save that we saw types of columns at least once
 		if !columnInfo.isTemporal {
@@ -180,16 +180,16 @@ func (app *App) createTableStructString(table *database.Table) (string, string, 
 		}
 
 		if shouldGenerateComments && !shouldInlineComments {
-			generateLineComments(&structFields, column.Comment)
+			generateLineComments(&structFields, table.Columns[i].Comment)
 		}
 
 		structFields.WriteString(columnName)
 		structFields.WriteString(" ")
 		structFields.WriteString(columnType)
 		structFields.WriteString(" ")
-		structFields.WriteString(app.taggers.GenerateTag(app.db, column))
+		structFields.WriteString(app.taggers.GenerateTag(app.db, table.Columns[i]))
 		if shouldGenerateComments && shouldInlineComments {
-			generateInlineComment(&structFields, column.Comment)
+			generateInlineComment(&structFields, table.Columns[i].Comment)
 		}
 		structFields.WriteString("\n")
 	}
@@ -331,8 +331,9 @@ func (app *App) camelCaseString(s string) string {
 	}
 
 	var cc strings.Builder
-	for _, part := range splitted {
-		cc.WriteString(app.caser.String(strings.ToLower(part)))
+	cc.Grow(len(s))
+	for i := range splitted {
+		cc.WriteString(app.caser.String(strings.ToLower(splitted[i])))
 	}
 	return cc.String()
 }
@@ -345,13 +346,13 @@ func getNullType(settings *settings.Settings, primitive, sql string) string {
 }
 
 func toInitialisms(s string) string {
-	for _, substr := range initialisms {
-		idx := indexCaseInsensitive(s, substr)
+	for i := range initialisms {
+		idx := indexCaseInsensitive(s, initialisms[i])
 		if idx == -1 {
 			continue
 		}
-		toReplace := s[idx : idx+len(substr)]
-		s = strings.ReplaceAll(s, toReplace, substr)
+		toReplace := s[idx : idx+len(initialisms[i])]
+		s = strings.ReplaceAll(s, toReplace, initialisms[i])
 	}
 	return s
 }
