@@ -47,25 +47,24 @@
 ## Top 5 CPU hotspots (changed, low confidence)
 
 1. `runtime.cgocall`
-2. `pkg/output.FileWriter.Write`
-3. `os.WriteFile`
-4. `os.OpenFile` / open path overlap
-5. top-level run path overlap (`internal/cli.(*App).Run`)
+2. `pkg/output.FileWriter.Write` cumulative write/open path
+3. `os.OpenFile`/`os.WriteFile` overlap
+4. top-level run path overlap (`internal/cli.(*App).Run`)
+5. no stable fifth hotspot beyond syscall noise (tiny 10ms sample)
 
 ## Top 5 allocation hotspots (changed, low confidence)
 
 1. `runtime/pprof.StartCPUProfile` (profiling overhead)
-2. `pkg/output` formatting path (`go/format.Source`)
-3. printer allocations in format path (`go/printer` internals)
-4. `internal/cli` struct generation path
-5. remaining profiling/writer support allocations
+2. compression/profiling writer path (`compress/flate.newDeflateFast`, `compress/flate.NewWriter`)
+3. regex/parser support (`regexp/syntax.(*compiler).inst`)
+4. generic allocator and syscall/string conversion (`runtime.mallocgc`, `syscall.UTF16FromString`)
+5. residual formatting/transform support (`golang.org/x/text/transform.String`)
 
 ## Priority shift (baseline -> changed)
 
 - CPU: no reliable reordering; sample size remains too small (typically ~10ms).
-- Alloc: changed representative run shows more formatter/profiler overhead,
-  but confidence is low due short runtime and overhead proportion.
-- Overall: optimization priorities remain measurement-first for SQLite.
+- Alloc: changed representative run is still dominated by profiler/compression/runtime overhead, with no stable SQLite-specific application hotspot.
+- Overall: latest changed batch trends slower than earlier pre-pooling changed batches, but confidence remains low due coarse 1s/2s granularity.
 
 ## Prioritized optimization candidates (1-5)
 
@@ -75,18 +74,10 @@
    - Impact: high (decision quality); Risk: low.
 3. If signal stabilizes, reduce output formatting/decorator overhead in `pkg/output`.
    - Impact: medium; Risk: medium.
-4. Reduce file write/open overhead for generated outputs.
+4. Reduce profiling artifact overhead in measurement harness where possible (without changing scenario semantics).
    - Impact: low/medium; Risk: medium.
-5. Defer SQLite DB-specific mapping optimizations until a stable hotspot appears.
+5. Defer SQLite DB-specific mapping optimizations until a stable non-overhead hotspot appears.
    - Impact: medium (focus); Risk: low.
-
-## Success metrics for follow-up optimizations
-
-- CPU sample volume per run: target >= 200ms sampled CPU.
-- Stable hotspot ordering across repeated runs (at least 5 runs).
-- End-to-end wall time: target >= 10% reduction after signal improvement.
-- `alloc_space` in formatting path: target >= 10% reduction.
-- Output correctness: no diff against expected generated files.
 
 ## Update: Changed batch `20260505-190911`
 
@@ -246,3 +237,41 @@ Compared with changed (`20260506-100845`):
   quality is still too low for high-confidence attribution.
 - Treat as noisy/unfavorable sample and keep SQLite optimization decisions
   measurement-first.
+
+## Update: Changed batch `20260508-095608`
+
+### Run-time comparison (latest changed)
+
+- Latest changed (`20260508-095608`) median: `1s`
+- Latest changed (`20260508-095608`) average: `1.429s`
+
+Compared with baseline (`20260505-173911`):
+
+- Median: `1s` -> `1s` (**0%**)
+- Average: `1.286s` -> `1.429s` (**+11.12%**, slower)
+
+Compared with previous documented changed (`20260506-104110`):
+
+- Median: `2s` -> `1s` (**improved**)
+- Average: `1.571s` -> `1.429s` (**-9.04%**)
+
+Compared with latest measured changed (`20260507-123350`):
+
+- Median: `2s` -> `1s` (**improved**)
+- Average: `1.571s` -> `1.429s` (**-9.04%**)
+
+Compared with stronger changed band (`20260505-174330` / `20260506-093308` / `20260506-100845`):
+
+- Median: `1s` -> `1s` (**no change**)
+- Average: `1.143s` -> `1.429s` (**+25.02%**, slower)
+
+### Hotspot impact check
+
+- CPU sample is still tiny (`10ms`) and fully dominated by `runtime.cgocall`.
+- Allocation profile remains heavily influenced by profiler/runtime/compression overhead.
+- No stable SQLite-specific hotspot reordering is visible from this batch.
+
+### Verdict for this batch
+
+- Better than the two immediately previous unfavorable SQLite batches, but still not back to the stronger `1.143s` changed band.
+- Signal quality remains low; treat this as directional only, not a high-confidence optimization verdict.

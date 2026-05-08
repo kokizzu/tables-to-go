@@ -46,47 +46,38 @@
 
 ## Top 5 CPU hotspots (changed)
 
-1. `pkg/output.FileWriter.Write` / `os.WriteFile`
-2. `runtime.cgocall` / syscall boundary
-3. `os.OpenFile` path
-4. output decorator + formatting path (`go/format.Source`)
-5. remaining file close/write syscall path
+1. `runtime.cgocall` / syscall boundary
+2. `pkg/output.FileWriter.Write` cumulative write path (`os.WriteFile`/open)
+3. output formatting path (`pkg/output.FormatDecorator.Decorate` + parser/printer work)
+4. parser/runtime helpers (`go/parser.(*parser).next`, map/runtime internals)
+5. top-level generation pipeline (`internal/cli.(*App).Run`, cumulative)
 
 ## Top 5 allocation hotspots (changed)
 
 1. `golang.org/x/text/transform.String`
-2. `pkg/output` format/decorator path (`go/format.Source`)
-3. `pkg/database.(*MySQL).GetColumnsOfTables`
-4. `pkg/database.attachMySQLColumnsToTables`
-5. `internal/cli` naming path (`formatColumnName`, `camelCaseString`)
+2. formatting/parser bookkeeping (`go/token.(*File).AddLine`)
+3. allocator pressure (`runtime.mallocgc`)
+4. string/path conversion (`syscall.UTF16FromString`, `strings.genSplit`)
+5. file/profiling support allocations (`os.newFile`, `compress/flate.NewWriter`)
 
 ## Priority shift (baseline -> changed)
 
-- CPU: per-table DB metadata hotspot (`GetColumnsOfTable`) dropped out of top
-  CPU list; output write/format is now dominant.
-- Alloc: DB allocation moved from singular query loop to bulk mapping helpers.
-- Overall: wall-time improved with a modest memory/allocation tradeoff.
+- CPU: still syscall-dominated; no DB-specific compute hotspot leads in latest changed sample.
+- Alloc: emphasis shifts toward formatting/parser and OS/path conversion work over DB mapping nodes.
+- Overall: latest changed batch is close to the pre-pooling baseline band, with no new clear win signature.
 
 ## Prioritized optimization candidates (1-5)
 
-1. Reduce output formatting/decorator overhead in `pkg/output`.
+1. Reduce output formatting overhead in `pkg/output` (`go/format` parser/printer path).
    - Impact: high; Risk: medium.
-2. Reduce file I/O overhead (open/write churn) in write path.
+2. Reduce write-path syscall churn (`os.WriteFile`/open/close frequency and path handling).
    - Impact: high; Risk: medium.
-3. Cache repeated casing and naming transforms in `internal/cli`.
+3. Reduce string/path conversion churn around writes (`UTF16`/split-heavy paths).
    - Impact: medium; Risk: low.
-4. Reduce DB scan-path overhead in `GetColumnsOfTables` (`database/sql` arg/scan churn).
+4. Trim non-essential profiler/writer support allocations in integration path.
    - Impact: low/medium; Risk: low.
-5. Measure output-only optimizations first, then re-rank DB-side work.
+5. Re-rank DB scan/mapping work after output/write changes, since DB nodes are not top drivers now.
    - Impact: medium (decision quality); Risk: low.
-
-## Success metrics for follow-up optimizations
-
-- End-to-end wall time: additional >= 10% reduction from changed baseline.
-- `FileWriter.Write` cumulative CPU: >= 20% reduction.
-- `alloc_space` in `pkg/output` + `internal/cli`: >= 15% reduction.
-- `alloc_space` in `attachMySQLColumnsToTables`: >= 20% reduction.
-- Output correctness: no diff against expected generated files.
 
 ## Update: Changed batch `20260505-190911` (stdlib `rows.Scan` streaming)
 
@@ -263,3 +254,42 @@ Compared with changed (`20260506-100845`):
 - Keeps MySQL better than baseline, but this batch is slightly slower than the
   two immediately previous changed batches (`093308`, `100845`).
 - Allocation behavior stays healthy and below baseline representative levels.
+
+## Update: Changed batch `20260508-095608`
+
+### Run-time comparison (latest changed)
+
+- Latest changed (`20260508-095608`) median: `11s`
+- Latest changed (`20260508-095608`) average: `10.857s`
+
+Compared with baseline (`20260505-173911`):
+
+- Median: `12s` -> `11s` (**-8.33%**)
+- Average: `11.857s` -> `10.857s` (**-8.43%**)
+
+Compared with previous documented changed (`20260506-104110`):
+
+- Median: `11s` -> `11s` (**no change**)
+- Average: `11.286s` -> `10.857s` (**-3.80%**)
+
+Compared with latest measured changed (`20260507-123350`):
+
+- Median: `11s` -> `11s` (**no change**)
+- Average: `11.143s` -> `10.857s` (**-2.57%**)
+
+Compared with best changed (`20260505-174330`):
+
+- Median: `11s` -> `11s` (**no change**)
+- Average: `10.714s` -> `10.857s` (**+1.33%**, slower)
+
+### Hotspot impact check
+
+- CPU remains syscall/output dominated (`runtime.cgocall` top, write path still cumulative heavy).
+- Allocation top set is currently parser/formatter/runtime heavy (`mallocgc`, parser/printer, `transform.String`) with DB mapping still present but not dominant.
+- No recurrence of the earlier DB attach allocation blow-up; profile shape stays in the healthy recent band.
+
+### Verdict for this batch
+
+- Restores a stronger MySQL average than the immediately previous measured batch.
+- Remains clearly better than baseline and close to best changed runs, but does not exceed the best observed average.
+- Current evidence does not indicate a new write-path regression signature in this batch.

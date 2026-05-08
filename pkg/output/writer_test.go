@@ -2,7 +2,7 @@ package output
 
 import (
 	"os"
-	"path"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -38,11 +38,11 @@ func TestFileWriter_Write(t *testing.T) {
 				t.Fatalf("expected non error, got: %s", err)
 			}
 
-			file := path.Join(wd, test.tableName+FileWriterExtension)
+			file := filepath.Join(wd, test.tableName+FileWriterExtension)
 			defer os.Remove(file)
 			t.Logf("writing file: %s\n", file)
 
-			fw := NewFileWriter(path.Dir(file))
+			fw := NewFileWriter(filepath.Dir(file))
 			err = fw.Write(test.tableName, test.content)
 			if err != nil {
 				test.isError(t, err)

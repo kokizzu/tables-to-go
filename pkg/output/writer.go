@@ -2,7 +2,7 @@ package output
 
 import (
 	"os"
-	"path"
+	"path/filepath"
 )
 
 const (
@@ -23,6 +23,10 @@ type FileWriter struct {
 
 // NewFileWriter constructs a new FileWriter.
 func NewFileWriter(path string) *FileWriter {
+	path = filepath.Clean(path)
+	if !os.IsPathSeparator(path[len(path)-1]) {
+		path += string(os.PathSeparator)
+	}
 	return &FileWriter{
 		path: path,
 		decorators: []Decorator{
@@ -33,8 +37,8 @@ func NewFileWriter(path string) *FileWriter {
 
 // Write is the implementation of the Writer interface. The FilerWriter writes
 // decorated content to the file specified by the given path and table name.
-func (w FileWriter) Write(tableName string, content []byte) error {
-	fileName := path.Join(w.path, tableName+FileWriterExtension)
+func (w *FileWriter) Write(tableName string, content []byte) error {
+	fileName := w.path + tableName + FileWriterExtension
 
 	decorated, err := w.decorate(content)
 	if err != nil {
@@ -45,7 +49,7 @@ func (w FileWriter) Write(tableName string, content []byte) error {
 }
 
 // decorate applies decorations like formatting.
-func (w FileWriter) decorate(content []byte) (decorated []byte, err error) {
+func (w *FileWriter) decorate(content []byte) (decorated []byte, err error) {
 	for i := range w.decorators {
 		content, err = w.decorators[i].Decorate(content)
 		if err != nil {

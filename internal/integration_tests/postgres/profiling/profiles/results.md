@@ -46,48 +46,38 @@
 
 ## Top 5 CPU hotspots (changed)
 
-1. `pkg/output.FileWriter.Write` / `os.WriteFile`
-2. `runtime.cgocall` / syscall boundary
-3. `os.OpenFile` path
-4. output decorator/format path (`go/format.Source`)
-5. remaining write/close syscall path
+1. `runtime.cgocall` / syscall boundary
+2. `pkg/output.FileWriter.Write` cumulative write path (`os.WriteFile`/open)
+3. output formatting path (`pkg/output.FormatDecorator.Decorate`, printer work)
+4. syscall/string encoding helpers (`syscall.encodeWTF16` and related)
+5. top-level generation pipeline (`internal/cli.(*App).Run`, cumulative)
 
 ## Top 5 allocation hotspots (changed)
 
 1. `golang.org/x/text/transform.String`
-2. `internal/cli` naming path (`formatColumnName`, `camelCaseString`)
-3. `pkg/output` format/decorator path (`go/format.Source`)
-4. `pkg/database.(*Postgresql).GetColumnsOfTables` + `sqlx` scan
-5. `pkg/database.attachPostgresqlColumnsToTables`
+2. growth/concat in generation and formatting (`strings.(*Builder).WriteString`, `bytes.growSlice`)
+3. Postgres decode/driver path (`github.com/lib/pq.textDecode`)
+4. allocator/profiling support (`runtime.mallocgc`, `runtime/pprof.StartCPUProfile`)
+5. output/format support (`text/tabwriter.NewWriter`, `compress/flate.NewWriter`)
 
 ## Priority shift (baseline -> changed)
 
-- CPU: dominant DB bottleneck shifted away from per-table singular query path;
-  output write/format now dominates.
-- Alloc: singular DB query alloc reduced; bulk mapping alloc introduced but
-  overall representative alloc is lower.
-- Overall: strongest wall-time win among DBs with clear hotspot reordering.
+- CPU: remains syscall-dominant, with output write/format still the main actionable path.
+- Alloc: latest changed sample is more formatting/driver-decode heavy; DB attach-specific hotspots are no longer leading.
+- Overall: runtime remains clearly better than baseline, but latest batch sits slightly above the best observed changed averages.
 
 ## Prioritized optimization candidates (1-5)
 
-1. Reduce output formatting/decorator overhead in `pkg/output`.
+1. Reduce output formatting overhead in `pkg/output` (`go/format`/printer-heavy path).
    - Impact: high; Risk: medium.
-2. Reduce file I/O overhead (open/write path) for generated files.
+2. Reduce write-path syscall churn (`os.WriteFile`/open/close behavior).
    - Impact: high; Risk: medium.
-3. Cache repeated naming/casing transforms.
-   - Impact: medium; Risk: low.
-4. Reduce DB query/scan-path overhead in `GetColumnsOfTables` (`database/sql` argument conversion and scan work).
+3. Reduce string/decode allocation pressure in Postgres driver and generation path.
+   - Impact: medium; Risk: medium.
+4. Limit profiling/output helper overhead that appears in alloc top set during runs.
    - Impact: low/medium; Risk: low.
-5. Re-profile after output-path changes before any deeper DB refactor.
+5. Re-check DB-side query/scan optimizations only after output-path reductions, since current DB mapping is not the dominant bottleneck.
    - Impact: medium (decision quality); Risk: low.
-
-## Success metrics for follow-up optimizations
-
-- End-to-end wall time: additional >= 10% reduction from changed baseline.
-- `FileWriter.Write` cumulative CPU: >= 20% reduction.
-- `alloc_space` in `pkg/output` + `internal/cli`: >= 15% reduction.
-- `alloc_space` in `attachPostgresqlColumnsToTables`: >= 20% reduction.
-- Output correctness: no diff against expected generated files.
 
 ## Update: Changed batch `20260505-190911` (stdlib `rows.Scan` streaming)
 
@@ -261,3 +251,42 @@ Compared with changed (`20260506-100845`):
 
 - Repeats the same best-observed Postgres runtime band as `193236` and `100845`.
 - Continues to combine strong runtime with healthy allocation behavior.
+
+## Update: Changed batch `20260508-095608`
+
+### Run-time comparison (latest changed)
+
+- Latest changed (`20260508-095608`) median: `4s`
+- Latest changed (`20260508-095608`) average: `4.429s`
+
+Compared with baseline (`20260505-173911`):
+
+- Median: `6s` -> `4s` (**-33.33%**)
+- Average: `5.571s` -> `4.429s` (**-20.50%**)
+
+Compared with previous documented changed (`20260506-104110`):
+
+- Median: `4s` -> `4s` (**no change**)
+- Average: `4.286s` -> `4.429s` (**+3.34%**, slower)
+
+Compared with latest measured changed (`20260507-123350`):
+
+- Median: `4s` -> `4s` (**no change**)
+- Average: `4.429s` -> `4.429s` (**no change**)
+
+Compared with best changed (`20260505-193236` / `20260506-100845` / `20260506-104110`):
+
+- Median: `4s` -> `4s` (**no change**)
+- Average: `4.286s` -> `4.429s` (**+3.34%**, slower)
+
+### Hotspot impact check
+
+- CPU remains strongly syscall-bound (`runtime.cgocall` dominates).
+- Allocation profile remains led by `transform.String`, allocator/runtime support, and output/format support nodes; DB mapping allocs are present but secondary.
+- No new high-confidence hotspot shift versus recent Postgres changed batches.
+
+### Verdict for this batch
+
+- Keeps the strong baseline improvement intact with stable median performance.
+- Average sits in the slower side of the current changed band (same as `174330`, `093308`, `123350`).
+- No new regression signature is visible beyond normal run-to-run variance.
