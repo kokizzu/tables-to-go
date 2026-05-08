@@ -567,6 +567,62 @@ func TestApp_Run(t *testing.T) {
 	}
 }
 
+func TestApp_Run_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("context canceled while fetching columns in force mode", func(t *testing.T) {
+		s := settings.New()
+		s.DbType = settings.DBTypeMySQL
+		s.Force = true
+		s.Verbose = true
+
+		table := &database.Table{Name: "test_table"}
+
+		mdb := newMockDB(database.New(s))
+		mdb.
+			On("GetTables", anyCtx).
+			Return([]*database.Table{table}, nil)
+
+		w := newMockWriter()
+		app := New(s, mdb, w, os.Stderr)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		err := app.Run(ctx)
+		assert.ErrorIs(t, err, context.Canceled)
+
+		mdb.AssertExpectations(t)
+	})
+
+	t.Run("context canceled while processing tables loop", func(t *testing.T) {
+		s := settings.New()
+		s.DbType = settings.DBTypeMySQL
+		s.Verbose = true
+
+		table := &database.Table{Name: "test_table"}
+
+		mdb := newMockDB(database.New(s))
+		mdb.
+			On("GetTables", anyCtx).
+			Return([]*database.Table{table}, nil)
+		mdb.
+			On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
+			Return(nil)
+
+		w := newMockWriter()
+		app := New(s, mdb, w, os.Stderr)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		err := app.Run(ctx)
+		assert.ErrorIs(t, err, context.Canceled)
+
+		mdb.AssertExpectations(t)
+	})
+}
+
 func TestApp_Run_StringTextColumns(t *testing.T) {
 	t.Parallel()
 
@@ -2704,4 +2760,3 @@ func TestWriteLineComments(t *testing.T) {
 		})
 	}
 }
-
