@@ -53,7 +53,7 @@
 //		  	generate table and column comments in structs: [off line inline] (default off)
 //		-d string
 //		  	database name; for sqlite3, URL query params '_pragma=<fn()>' can be added, e.g. ?_pragma=busy_timeout(5000) (default "postgres")
-//		-f	force; skip tables that encounter errors
+//		-f	force; Skip tables that encounter errors. Note: Increases the load to the database due to different column fetching strategy.
 //		-fn-format value
 //		  	format of the filename: camelCase (c, default) or snake_case (s) (default c)
 //		-format value

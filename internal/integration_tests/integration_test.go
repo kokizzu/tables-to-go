@@ -2505,6 +2505,121 @@ func TestIntegrationEmbeddedStructs(t *testing.T) {
 	}
 }
 
+func TestIntegrationForceFlag(t *testing.T) {
+	const testDirectory = "forceflag"
+
+	tests := []struct {
+		desc           string
+		settings       *testSettings
+		args           []string
+		expectedStdout string
+		expectedStderr string
+	}{
+		{
+			desc:     "mysql 8",
+			settings: newMySQLSettings("8", filepath.Join("mysql", testDirectory), "."),
+			args: []string{
+				"tables-to-go",
+				"-t", "mysql",
+				"-u", "root",
+				"-p", "mysecretpassword",
+				"-d", "public",
+				"-h", "localhost",
+				"-port", "3306",
+				"-f",
+				"-table", "bad-table",
+				"-table", "user",
+				"-of", filepath.Join("mysql", testDirectory, outputDirectoryName),
+			},
+			expectedStdout: "^$",
+			expectedStderr: `(?s).*running for.*could not create string for table "bad-table".*done!.*`,
+		},
+		{
+			desc:     "postgres 18",
+			settings: newPostgresSettings("18", filepath.Join("postgres", testDirectory), "."),
+			args: []string{
+				"tables-to-go",
+				"-t", "pg",
+				"-u", "postgres",
+				"-p", "mysecretpassword",
+				"-d", "postgres",
+				"-s", "public",
+				"-h", "localhost",
+				"-port", "5432",
+				"-sslmode", "disable",
+				"-f",
+				"-table", "bad-table",
+				"-table", "user",
+				"-of", filepath.Join("postgres", testDirectory, outputDirectoryName),
+			},
+			expectedStdout: "^$",
+			expectedStderr: `(?s).*running for.*could not create string for table "bad-table".*done!.*`,
+		},
+		{
+			desc:     "sqlite 3",
+			settings: newSQLiteSettings(filepath.Join("sqlite3", testDirectory), "."),
+			args: []string{
+				"tables-to-go",
+				"-t", "sqlite3",
+				"-d", filepath.Join("sqlite3", testDirectory, "database.db"),
+				"-of", filepath.Join("sqlite3", testDirectory, outputDirectoryName),
+				"-f",
+				"-table", "bad-table",
+				"-table", "user",
+			},
+			expectedStdout: "^$",
+			expectedStderr: `(?s).*running for.*could not create string for table "bad-table".*done!.*`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			args, err := cmd.NewArgs(test.args, &stderr)
+			if err != nil {
+				t.Fatalf("could not parse args %q: %v", test.args, err)
+			}
+			test.settings.Settings = args.Settings
+
+			db := setupDatabase(t, test.settings)
+			defer func() {
+				if !t.Failed() {
+					_ = os.RemoveAll(test.settings.Settings.OutputFilePath)
+				}
+			}()
+
+			loadTestData(t, db.SQLDriver(), test.settings)
+
+			err = os.MkdirAll(test.settings.Settings.OutputFilePath, 0755)
+			if err != nil {
+				t.Fatalf("could not create output file path: %v", err)
+			}
+
+			version, err := db.Version(t.Context())
+			if err != nil {
+				t.Logf("could not get version: %v", err)
+			} else {
+				t.Logf("running tests against database %s\n", version)
+			}
+
+			// Close setup connection so Cmd.Run owns one connect/close lifecycle.
+			err = db.Close()
+			if err != nil {
+				t.Fatalf("could not close setup database connection before run: %v", err)
+			}
+
+			c := cmd.New(cmd.VersionInfo{}, db)
+			err = c.Run(t.Context(), test.args, &stdout, &stderr)
+			assert.NoError(t, err)
+			assert.Regexp(t, test.expectedStdout, stdout.String())
+			assert.Regexp(t, test.expectedStderr, stderr.String())
+
+			checkFiles(t, test.settings)
+		})
+	}
+}
+
 func TestIntegrationGenHeader(t *testing.T) {
 	const testDirectory = "genheader"
 

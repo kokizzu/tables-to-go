@@ -64,9 +64,9 @@ func (app *App) Run(ctx context.Context) error {
 		app.printf("> number of tables: %v\r\n", len(tables))
 	}
 
-	err = app.db.GetColumnsOfTables(ctx, tables)
+	tables, err = app.getColumnsOfTables(ctx, tables)
 	if err != nil {
-		return fmt.Errorf("could not get columns of tables: %w", err)
+		return err
 	}
 
 	for i := range tables {
@@ -110,6 +110,43 @@ func (app *App) Run(ctx context.Context) error {
 	app.println("done!")
 
 	return nil
+}
+
+func (app *App) getColumnsOfTables(ctx context.Context, tables []*database.Table) ([]*database.Table, error) {
+	// We need to honor the force setting: if enabled, we fall back to query the
+	// columns for each table separately and if there was an error, we continue
+	// instead of returning early. This introduces a performance penalty by hitting
+	// the DB harder than needed.
+	if app.settings.Force {
+		tablesToProcess := make([]*database.Table, 0, len(tables))
+		for i := range tables {
+			select {
+			case <-ctx.Done():
+				if app.settings.Verbose {
+					app.printf("> received cancellation: %v\r\n", context.Cause(ctx))
+				}
+				return nil, ctx.Err()
+			default:
+			}
+
+			err := app.db.GetColumnsOfTables(ctx, []*database.Table{tables[i]})
+			if err != nil {
+				app.printf("could not get columns of table %q: %v\n", tables[i].Name, err)
+				continue
+			}
+
+			tablesToProcess = append(tablesToProcess, tables[i])
+		}
+
+		return tablesToProcess, nil
+	}
+
+	err := app.db.GetColumnsOfTables(ctx, tables)
+	if err != nil {
+		return nil, fmt.Errorf("could not get columns of tables: %w", err)
+	}
+
+	return tables, nil
 }
 
 type columnInfo struct {
