@@ -1,6 +1,7 @@
 package database
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -68,10 +69,8 @@ func (pg *Postgresql) Connect(ctx context.Context) error {
 
 // DSN creates the data source name string to connect to this database.
 func (pg *Postgresql) DSN() (string, error) {
-	user := pg.defaultUserName
-	if pg.Settings.User != "" {
-		user = pg.Settings.User
-	}
+	user := cmp.Or(pg.Settings.User, pg.defaultUserName)
+
 	if pg.Settings.Socket != "" {
 		return fmt.Sprintf("postgres://%s:%s@?%s&%s&sslmode=%s",
 			user, pg.Settings.Pswd, pg.Settings.Socket, pg.Settings.Port, pg.Settings.SSLMode), nil

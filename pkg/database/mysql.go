@@ -1,6 +1,7 @@
 package database
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -42,10 +43,7 @@ func (mysql *MySQL) Connect(ctx context.Context) error {
 
 // DSN creates the data source name string to connect to this database.
 func (mysql *MySQL) DSN() (string, error) {
-	user := mysql.defaultUserName
-	if mysql.Settings.User != "" {
-		user = mysql.Settings.User
-	}
+	user := cmp.Or(mysql.Settings.User, mysql.defaultUserName)
 
 	if mysql.Settings.Socket != "" {
 		return fmt.Sprintf("%s:%s@unix(%s)/%s",
@@ -93,7 +91,7 @@ func (mysql *MySQL) GetTables(ctx context.Context, tables ...string) ([]*Table, 
 	if mysql.Verbose {
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "> Error at GetTables()")
-			fmt.Fprintf(os.Stderr, "> schema: %q\r\n", mysql.DbName)
+			fmt.Fprintf(os.Stderr, "> dbName: %q\r\n", mysql.DbName)
 		}
 	}
 
@@ -142,7 +140,6 @@ func (mysql *MySQL) GetColumnsOfTables(ctx context.Context, tables []*Table) err
 	if err != nil {
 		if mysql.Settings.Verbose {
 			fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTables(%v)\r\n", args[1:])
-			fmt.Fprintf(os.Stderr, "> schema: %q\r\n", mysql.Schema)
 			fmt.Fprintf(os.Stderr, "> dbName: %q\r\n", mysql.DbName)
 		}
 
@@ -171,7 +168,6 @@ func (mysql *MySQL) GetColumnsOfTables(ctx context.Context, tables []*Table) err
 		if err != nil {
 			if mysql.Settings.Verbose {
 				fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTables(%v)\r\n", args[1:])
-				fmt.Fprintf(os.Stderr, "> schema: %q\r\n", mysql.Schema)
 				fmt.Fprintf(os.Stderr, "> dbName: %q\r\n", mysql.DbName)
 			}
 
@@ -193,7 +189,6 @@ func (mysql *MySQL) GetColumnsOfTables(ctx context.Context, tables []*Table) err
 	if err != nil {
 		if mysql.Settings.Verbose {
 			fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTables(%v)\r\n", args[1:])
-			fmt.Fprintf(os.Stderr, "> schema: %q\r\n", mysql.Schema)
 			fmt.Fprintf(os.Stderr, "> dbName: %q\r\n", mysql.DbName)
 		}
 
