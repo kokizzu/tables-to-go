@@ -36,4 +36,4 @@ coverage.txt
 internal/integration_tests/**/output
 
 AGENTS.md
-plan.md
+*plan.md

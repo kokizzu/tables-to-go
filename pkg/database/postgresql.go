@@ -1,6 +1,7 @@
 package database
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -68,10 +69,8 @@ func (pg *Postgresql) Connect(ctx context.Context) error {
 
 // DSN creates the data source name string to connect to this database.
 func (pg *Postgresql) DSN() (string, error) {
-	user := pg.defaultUserName
-	if pg.Settings.User != "" {
-		user = pg.Settings.User
-	}
+	user := cmp.Or(pg.Settings.User, pg.defaultUserName)
+
 	if pg.Settings.Socket != "" {
 		return fmt.Sprintf("postgres://%s:%s@?%s&%s&sslmode=%s",
 			user, pg.Settings.Pswd, pg.Settings.Socket, pg.Settings.Port, pg.Settings.SSLMode), nil
@@ -118,12 +117,27 @@ func (pg *Postgresql) GetTables(ctx context.Context, tables ...string) ([]*Table
 	return dbTables, err
 }
 
-// PrepareGetColumnsOfTableStmt prepares the statement for retrieving the
-// columns of a specific table for a given database.
-func (pg *Postgresql) PrepareGetColumnsOfTableStmt(ctx context.Context) (err error) {
+// GetColumnsOfTables retrieves columns for all given tables.
+func (pg *Postgresql) GetColumnsOfTables(ctx context.Context, tables []*Table) error {
+	if len(tables) == 0 {
+		return nil
+	}
 
-	pg.GetColumnsOfTableStmt, err = pg.PreparexContext(ctx, `
+	var (
+		tableByName = make(map[string]*Table, len(tables))
+		tableNames  = make([]string, 0, len(tables))
+	)
+	for i := range tables {
+		tableByName[tables[i].Name] = tables[i]
+		tableNames = append(tableNames, tables[i].Name)
+	}
+
+	args := []any{pg.Schema}
+	in := pg.andInClause("LOWER(ic.table_name)", tableNames, &args)
+
+	rows, err := pg.QueryContext(ctx, `
 		SELECT
+			ic.table_name,
 			ic.ordinal_position,
 			ic.column_name,
 			COALESCE(col_description(pc.oid, pa.attnum), '') AS column_comment,
@@ -148,28 +162,69 @@ func (pg *Postgresql) PrepareGetColumnsOfTableStmt(ctx context.Context) (err err
 			AND pa.attname = ic.column_name
 			AND pa.attnum > 0
 			AND NOT pa.attisdropped
-		WHERE ic.table_name = $1
-		AND ic.table_schema = $2
-		ORDER BY ic.ordinal_position
-	`)
-
-	return err
-}
-
-// GetColumnsOfTable executes the statement for retrieving the columns of a
-// specific table in a given schema.
-func (pg *Postgresql) GetColumnsOfTable(ctx context.Context, table *Table) (err error) {
-
-	err = pg.GetColumnsOfTableStmt.SelectContext(ctx, &table.Columns, table.Name, pg.Schema)
-
-	if pg.Verbose {
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTable(%v)\r\n", table.Name)
+		WHERE ic.table_schema = $1
+		`+in+`
+		ORDER BY ic.table_name, ic.ordinal_position
+	`, args...)
+	if err != nil {
+		if pg.Verbose {
+			fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTables(%v)\r\n", tableNames)
 			fmt.Fprintf(os.Stderr, "> schema: %q\r\n", pg.Schema)
 		}
+
+		return err
+	}
+	defer rows.Close() //nolint:errcheck // Best effort close
+
+	var (
+		tableName string
+		column    Column
+	)
+	for rows.Next() {
+		err = rows.Scan(
+			&tableName,
+			&column.OrdinalPosition,
+			&column.Name,
+			&column.Comment,
+			&column.DataType,
+			&column.DefaultValue,
+			&column.IsNullable,
+			&column.CharacterMaximumLength,
+			&column.NumericPrecision,
+			&column.ConstraintName,
+			&column.ConstraintType,
+		)
+		if err != nil {
+			if pg.Verbose {
+				fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTables(%v)\r\n", tableNames)
+				fmt.Fprintf(os.Stderr, "> schema: %q\r\n", pg.Schema)
+			}
+
+			return err
+		}
+
+		table, ok := tableByName[tableName]
+		if !ok {
+			if pg.Settings.Verbose {
+				fmt.Fprintf(os.Stderr, "> Warning: specified table %q not found\r\n", tableName)
+			}
+			continue
+		}
+
+		table.Columns = append(table.Columns, column)
 	}
 
-	return err
+	err = rows.Err()
+	if err != nil {
+		if pg.Verbose {
+			fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTables(%v)\r\n", tableNames)
+			fmt.Fprintf(os.Stderr, "> schema: %q\r\n", pg.Schema)
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 // IsPrimaryKey checks if the column belongs to the primary key.

@@ -30,8 +30,7 @@ type Database interface {
 	Version(ctx context.Context) (string, error)
 
 	GetTables(ctx context.Context, tables ...string) ([]*Table, error)
-	PrepareGetColumnsOfTableStmt(ctx context.Context) error
-	GetColumnsOfTable(ctx context.Context, table *Table) error
+	GetColumnsOfTables(ctx context.Context, tables []*Table) error
 
 	IsPrimaryKey(column Column) bool
 	IsAutoIncrement(column Column) bool
@@ -82,7 +81,6 @@ type Column struct {
 // GeneralDatabase represents a base "class" database - for all other concrete
 // databases it implements partly the Database interface.
 type GeneralDatabase struct {
-	GetColumnsOfTableStmt *sqlx.Stmt
 	*settings.Settings
 	*sqlx.DB
 

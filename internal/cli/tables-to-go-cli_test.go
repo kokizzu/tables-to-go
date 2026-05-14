@@ -55,13 +55,8 @@ func (db *mockDB) GetTables(ctx context.Context, tables ...string) ([]*database.
 	return args.Get(0).([]*database.Table), nil
 }
 
-func (db *mockDB) PrepareGetColumnsOfTableStmt(ctx context.Context) error {
-	args := db.Called(ctx)
-	return args.Error(0)
-}
-
-func (db *mockDB) GetColumnsOfTable(ctx context.Context, table *database.Table) error {
-	args := db.Called(ctx, table)
+func (db *mockDB) GetColumnsOfTables(ctx context.Context, tables []*database.Table) error {
+	args := db.Called(ctx, tables)
 	return args.Error(0)
 }
 
@@ -73,7 +68,7 @@ func newMockWriter() *mockWriter {
 	return &mockWriter{}
 }
 
-func (w *mockWriter) Write(tableName, content string) error {
+func (w *mockWriter) Write(tableName string, content []byte) error {
 	args := w.Called(tableName, content)
 	return args.Error(0)
 }
@@ -550,10 +545,7 @@ func TestApp_Run(t *testing.T) {
 						On("GetTables", anyCtx).
 						Return([]*database.Table{table}, nil)
 					mdb.
-						On("PrepareGetColumnsOfTableStmt", anyCtx).
-						Return(nil)
-					mdb.
-						On("GetColumnsOfTable", anyCtx, table).
+						On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 						Return(nil)
 
 					w := newMockWriter()
@@ -561,7 +553,7 @@ func TestApp_Run(t *testing.T) {
 						On(
 							"Write",
 							"TestTable",
-							test.expected,
+							[]byte(test.expected),
 						).
 						Return(nil)
 
@@ -573,6 +565,62 @@ func TestApp_Run(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestApp_Run_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("context canceled while fetching columns in force mode", func(t *testing.T) {
+		s := settings.New()
+		s.DbType = settings.DBTypeMySQL
+		s.Force = true
+		s.Verbose = true
+
+		table := &database.Table{Name: "test_table"}
+
+		mdb := newMockDB(database.New(s))
+		mdb.
+			On("GetTables", anyCtx).
+			Return([]*database.Table{table}, nil)
+
+		w := newMockWriter()
+		app := New(s, mdb, w, os.Stderr)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		err := app.Run(ctx)
+		assert.ErrorIs(t, err, context.Canceled)
+
+		mdb.AssertExpectations(t)
+	})
+
+	t.Run("context canceled while processing tables loop", func(t *testing.T) {
+		s := settings.New()
+		s.DbType = settings.DBTypeMySQL
+		s.Verbose = true
+
+		table := &database.Table{Name: "test_table"}
+
+		mdb := newMockDB(database.New(s))
+		mdb.
+			On("GetTables", anyCtx).
+			Return([]*database.Table{table}, nil)
+		mdb.
+			On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
+			Return(nil)
+
+		w := newMockWriter()
+		app := New(s, mdb, w, os.Stderr)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		err := app.Run(ctx)
+		assert.ErrorIs(t, err, context.Canceled)
+
+		mdb.AssertExpectations(t)
+	})
 }
 
 func TestApp_Run_StringTextColumns(t *testing.T) {
@@ -610,10 +658,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -621,7 +666,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\ntype TestTable struct {\nColumnName string `db:\"column_name\"`\n}",
+								[]byte("package dto\n\ntype TestTable struct {\nColumnName string `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -652,10 +697,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -663,7 +705,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName sql.NullString `db:\"column_name\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName sql.NullString `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -695,10 +737,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -706,7 +745,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName *string `db:\"column_name\"`\n}",
+								[]byte("package dto\n\ntype TestTable struct {\nColumnName *string `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -742,10 +781,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -753,7 +789,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName1 sql.NullString `db:\"column_name_1\"`\nColumnName2 string `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName1 sql.NullString `db:\"column_name_1\"`\nColumnName2 string `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 
@@ -790,10 +826,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -801,7 +834,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName1 *string `db:\"column_name_1\"`\nColumnName2 string `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\ntype TestTable struct {\nColumnName1 *string `db:\"column_name_1\"`\nColumnName2 string `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 
@@ -853,13 +886,7 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table1, table2}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table1).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table2).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table1, table2}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -867,14 +894,14 @@ func TestApp_Run_StringTextColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable1",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable1 struct {\nColumnName1 sql.NullString `db:\"column_name_1\"`\nColumnName2 string `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable1 struct {\nColumnName1 sql.NullString `db:\"column_name_1\"`\nColumnName2 string `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 						w.
 							On(
 								"Write",
 								"TestTable2",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable2 struct {\nColumnName1 string `db:\"column_name_1\"`\nColumnName2 sql.NullString `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable2 struct {\nColumnName1 string `db:\"column_name_1\"`\nColumnName2 sql.NullString `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 
@@ -924,10 +951,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -935,7 +959,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\ntype TestTable struct {\nColumnName int `db:\"column_name\"`\n}",
+								[]byte("package dto\n\ntype TestTable struct {\nColumnName int `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -966,10 +990,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -977,7 +998,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName sql.NullInt64 `db:\"column_name\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName sql.NullInt64 `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -1009,10 +1030,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1020,7 +1038,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName *int `db:\"column_name\"`\n}",
+								[]byte("package dto\n\ntype TestTable struct {\nColumnName *int `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -1056,10 +1074,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1067,7 +1082,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName1 sql.NullInt64 `db:\"column_name_1\"`\nColumnName2 int `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName1 sql.NullInt64 `db:\"column_name_1\"`\nColumnName2 int `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 
@@ -1104,10 +1119,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1115,7 +1127,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName1 *int `db:\"column_name_1\"`\nColumnName2 int `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\ntype TestTable struct {\nColumnName1 *int `db:\"column_name_1\"`\nColumnName2 int `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 
@@ -1167,13 +1179,7 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table1, table2}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table1).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table2).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table1, table2}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1181,14 +1187,14 @@ func TestApp_Run_IntegerColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable1",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable1 struct {\nColumnName1 sql.NullInt64 `db:\"column_name_1\"`\nColumnName2 int `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable1 struct {\nColumnName1 sql.NullInt64 `db:\"column_name_1\"`\nColumnName2 int `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 						w.
 							On(
 								"Write",
 								"TestTable2",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable2 struct {\nColumnName1 int `db:\"column_name_1\"`\nColumnName2 sql.NullInt64 `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable2 struct {\nColumnName1 int `db:\"column_name_1\"`\nColumnName2 sql.NullInt64 `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 
@@ -1238,10 +1244,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1249,7 +1252,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\ntype TestTable struct {\nColumnName float64 `db:\"column_name\"`\n}",
+								[]byte("package dto\n\ntype TestTable struct {\nColumnName float64 `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -1280,10 +1283,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1291,7 +1291,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName sql.NullFloat64 `db:\"column_name\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName sql.NullFloat64 `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -1323,10 +1323,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1334,7 +1331,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName *float64 `db:\"column_name\"`\n}",
+								[]byte("package dto\n\ntype TestTable struct {\nColumnName *float64 `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -1370,10 +1367,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1381,7 +1375,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName1 sql.NullFloat64 `db:\"column_name_1\"`\nColumnName2 float64 `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName1 sql.NullFloat64 `db:\"column_name_1\"`\nColumnName2 float64 `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 
@@ -1418,10 +1412,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1429,7 +1420,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName1 *float64 `db:\"column_name_1\"`\nColumnName2 float64 `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\ntype TestTable struct {\nColumnName1 *float64 `db:\"column_name_1\"`\nColumnName2 float64 `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 
@@ -1481,13 +1472,7 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table1, table2}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table1).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table2).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table1, table2}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1495,14 +1480,14 @@ func TestApp_Run_FloatColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable1",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable1 struct {\nColumnName1 sql.NullFloat64 `db:\"column_name_1\"`\nColumnName2 float64 `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable1 struct {\nColumnName1 sql.NullFloat64 `db:\"column_name_1\"`\nColumnName2 float64 `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 						w.
 							On(
 								"Write",
 								"TestTable2",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable2 struct {\nColumnName1 float64 `db:\"column_name_1\"`\nColumnName2 sql.NullFloat64 `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable2 struct {\nColumnName1 float64 `db:\"column_name_1\"`\nColumnName2 sql.NullFloat64 `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 
@@ -1552,10 +1537,7 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1563,7 +1545,7 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n\t\"time\"\n)\n\ntype TestTable struct {\nColumnName time.Time `db:\"column_name\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"time\"\n)\n\ntype TestTable struct {\nColumnName time.Time `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -1594,10 +1576,7 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1605,7 +1584,7 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName sql.NullTime `db:\"column_name\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName sql.NullTime `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -1637,10 +1616,7 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1648,7 +1624,7 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n\t\"time\"\n)\n\ntype TestTable struct {\nColumnName *time.Time `db:\"column_name\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"time\"\n)\n\ntype TestTable struct {\nColumnName *time.Time `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -1684,10 +1660,7 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1695,7 +1668,7 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n\t\"database/sql\"\n\t\"time\"\n)\n\ntype TestTable struct {\nColumnName1 sql.NullTime `db:\"column_name_1\"`\nColumnName2 time.Time `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n\t\"time\"\n)\n\ntype TestTable struct {\nColumnName1 sql.NullTime `db:\"column_name_1\"`\nColumnName2 time.Time `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 
@@ -1732,10 +1705,7 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1743,7 +1713,7 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n\t\"time\"\n)\n\ntype TestTable struct {\nColumnName1 *time.Time `db:\"column_name_1\"`\nColumnName2 time.Time `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"time\"\n)\n\ntype TestTable struct {\nColumnName1 *time.Time `db:\"column_name_1\"`\nColumnName2 time.Time `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 
@@ -1795,13 +1765,7 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table1, table2}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table1).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table2).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table1, table2}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1809,14 +1773,14 @@ func TestApp_Run_TemporalColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable1",
-								"package dto\n\nimport (\n\t\"database/sql\"\n\t\"time\"\n)\n\ntype TestTable1 struct {\nColumnName1 sql.NullTime `db:\"column_name_1\"`\nColumnName2 time.Time `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n\t\"time\"\n)\n\ntype TestTable1 struct {\nColumnName1 sql.NullTime `db:\"column_name_1\"`\nColumnName2 time.Time `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 						w.
 							On(
 								"Write",
 								"TestTable2",
-								"package dto\n\nimport (\n\t\"database/sql\"\n\t\"time\"\n)\n\ntype TestTable2 struct {\nColumnName1 time.Time `db:\"column_name_1\"`\nColumnName2 sql.NullTime `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n\t\"time\"\n)\n\ntype TestTable2 struct {\nColumnName1 time.Time `db:\"column_name_1\"`\nColumnName2 sql.NullTime `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 
@@ -1866,10 +1830,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1877,7 +1838,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\ntype TestTable struct {\nColumnName bool `db:\"column_name\"`\n}",
+								[]byte("package dto\n\ntype TestTable struct {\nColumnName bool `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -1908,10 +1869,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1919,7 +1877,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName sql.NullBool `db:\"column_name\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName sql.NullBool `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -1951,10 +1909,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -1962,7 +1917,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName *bool `db:\"column_name\"`\n}",
+								[]byte("package dto\n\ntype TestTable struct {\nColumnName *bool `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -1998,10 +1953,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -2009,7 +1961,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName1 sql.NullBool `db:\"column_name_1\"`\nColumnName2 bool `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName1 sql.NullBool `db:\"column_name_1\"`\nColumnName2 bool `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 
@@ -2046,10 +1998,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -2057,7 +2006,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName1 *bool `db:\"column_name_1\"`\nColumnName2 bool `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\ntype TestTable struct {\nColumnName1 *bool `db:\"column_name_1\"`\nColumnName2 bool `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 
@@ -2109,13 +2058,7 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table1, table2}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table1).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table2).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table1, table2}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -2123,14 +2066,14 @@ func TestApp_Run_BooleanColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable1",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable1 struct {\nColumnName1 sql.NullBool `db:\"column_name_1\"`\nColumnName2 bool `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable1 struct {\nColumnName1 sql.NullBool `db:\"column_name_1\"`\nColumnName2 bool `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 						w.
 							On(
 								"Write",
 								"TestTable2",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable2 struct {\nColumnName1 bool `db:\"column_name_1\"`\nColumnName2 sql.NullBool `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable2 struct {\nColumnName1 bool `db:\"column_name_1\"`\nColumnName2 sql.NullBool `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 
@@ -2184,10 +2127,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -2195,7 +2135,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\ntype TestTable struct {\nColumnName string `db:\"column_name\"`\n}",
+								[]byte("package dto\n\ntype TestTable struct {\nColumnName string `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -2227,10 +2167,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -2238,7 +2175,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName sql.NullString `db:\"column_name\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName sql.NullString `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -2271,10 +2208,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -2282,7 +2216,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName *string `db:\"column_name\"`\n}",
+								[]byte("package dto\n\ntype TestTable struct {\nColumnName *string `db:\"column_name\"`\n}"),
 							).
 							Return(nil)
 
@@ -2319,10 +2253,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -2330,7 +2261,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName1 sql.NullString `db:\"column_name_1\"`\nColumnName2 string `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable struct {\nColumnName1 sql.NullString `db:\"column_name_1\"`\nColumnName2 string `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 
@@ -2368,10 +2299,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -2379,7 +2307,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable",
-								"package dto\n\nimport (\n)\n\ntype TestTable struct {\nColumnName1 *string `db:\"column_name_1\"`\nColumnName2 string `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\ntype TestTable struct {\nColumnName1 *string `db:\"column_name_1\"`\nColumnName2 string `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 
@@ -2432,13 +2360,7 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On("GetTables", anyCtx).
 							Return([]*database.Table{table1, table2}, nil)
 						mdb.
-							On("PrepareGetColumnsOfTableStmt", anyCtx).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table1).
-							Return(nil)
-						mdb.
-							On("GetColumnsOfTable", anyCtx, table2).
+							On("GetColumnsOfTables", anyCtx, []*database.Table{table1, table2}).
 							Return(nil)
 
 						w := newMockWriter()
@@ -2446,14 +2368,14 @@ func TestRun_UnknownColumns(t *testing.T) {
 							On(
 								"Write",
 								"TestTable1",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable1 struct {\nColumnName1 sql.NullString `db:\"column_name_1\"`\nColumnName2 string `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable1 struct {\nColumnName1 sql.NullString `db:\"column_name_1\"`\nColumnName2 string `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 						w.
 							On(
 								"Write",
 								"TestTable2",
-								"package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable2 struct {\nColumnName1 string `db:\"column_name_1\"`\nColumnName2 sql.NullString `db:\"column_name_2\"`\n}",
+								[]byte("package dto\n\nimport (\n\t\"database/sql\"\n)\n\ntype TestTable2 struct {\nColumnName1 string `db:\"column_name_1\"`\nColumnName2 sql.NullString `db:\"column_name_2\"`\n}"),
 							).
 							Return(nil)
 

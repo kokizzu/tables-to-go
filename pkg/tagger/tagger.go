@@ -30,8 +30,8 @@ func NewTaggers(tags settings.ResolvedTags) *Taggers {
 	t := &Taggers{
 		taggers: make([]Tagger, 0, len(tags)),
 	}
-	for _, tag := range tags {
-		switch tag {
+	for i := range tags {
+		switch tags[i] {
 		case settings.TagDB:
 			t.taggers = append(t.taggers, Db{})
 		case settings.TagGorm:
@@ -39,7 +39,7 @@ func NewTaggers(tags settings.ResolvedTags) *Taggers {
 		case settings.TagStructable:
 			t.taggers = append(t.taggers, Mastermind{})
 		default:
-			t.taggers = append(t.taggers, NewGeneric(tag))
+			t.taggers = append(t.taggers, NewGeneric(tags[i]))
 		}
 	}
 

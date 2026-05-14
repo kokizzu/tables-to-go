@@ -1,6 +1,7 @@
 package database
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -42,10 +43,7 @@ func (mysql *MySQL) Connect(ctx context.Context) error {
 
 // DSN creates the data source name string to connect to this database.
 func (mysql *MySQL) DSN() (string, error) {
-	user := mysql.defaultUserName
-	if mysql.Settings.User != "" {
-		user = mysql.Settings.User
-	}
+	user := cmp.Or(mysql.Settings.User, mysql.defaultUserName)
 
 	if mysql.Settings.Socket != "" {
 		return fmt.Sprintf("%s:%s@unix(%s)/%s",
@@ -93,53 +91,111 @@ func (mysql *MySQL) GetTables(ctx context.Context, tables ...string) ([]*Table, 
 	if mysql.Verbose {
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "> Error at GetTables()")
-			fmt.Fprintf(os.Stderr, "> schema: %q\r\n", mysql.DbName)
+			fmt.Fprintf(os.Stderr, "> dbName: %q\r\n", mysql.DbName)
 		}
 	}
 
 	return dbTables, err
 }
 
-// PrepareGetColumnsOfTableStmt prepares the statement for retrieving the
-// columns of a specific table for a given database.
-func (mysql *MySQL) PrepareGetColumnsOfTableStmt(ctx context.Context) (err error) {
-
-	mysql.GetColumnsOfTableStmt, err = mysql.PreparexContext(ctx, `
-		SELECT
-		  ordinal_position AS ordinal_position,
-		  column_name AS column_name,
-		  column_comment AS column_comment,
-		  LOWER(data_type) AS data_type,
-		  column_default AS column_default,
-		  is_nullable AS is_nullable,
-		  character_maximum_length AS character_maximum_length,
-		  numeric_precision AS numeric_precision,
-		  column_key AS column_key,
-		  extra AS extra
-		FROM information_schema.columns
-		WHERE table_name = ?
-		AND table_schema = ?
-		ORDER BY ordinal_position
-	`)
-
-	return err
-}
-
-// GetColumnsOfTable executes the statement for retrieving the columns of a
-// specific table for a given database.
-func (mysql *MySQL) GetColumnsOfTable(ctx context.Context, table *Table) (err error) {
-
-	err = mysql.GetColumnsOfTableStmt.SelectContext(ctx, &table.Columns, table.Name, mysql.DbName)
-
-	if mysql.Settings.Verbose {
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTable(%v)\r\n", table.Name)
-			fmt.Fprintf(os.Stderr, "> schema: %q\r\n", mysql.Schema)
-			fmt.Fprintf(os.Stderr, "> dbName: %q\r\n", mysql.DbName)
-		}
+// GetColumnsOfTables executes the query for retrieving columns.
+func (mysql *MySQL) GetColumnsOfTables(ctx context.Context, tables []*Table) error {
+	if len(tables) == 0 {
+		return nil
 	}
 
-	return err
+	tableByName := make(map[string]*Table, len(tables))
+	for i := range tables {
+		tableByName[tables[i].Name] = tables[i]
+	}
+
+	args := make([]any, 0, len(tables)+1)
+	args = append(args, mysql.DbName)
+	for i := range tables {
+		args = append(args, tables[i].Name)
+	}
+
+	in := "(?" + strings.Repeat(",?", len(tables)-1) + ")"
+
+	query := `
+		SELECT
+			table_name AS table_name,
+			ordinal_position AS ordinal_position,
+			column_name AS column_name,
+			column_comment AS column_comment,
+			LOWER(data_type) AS data_type,
+			column_default AS column_default,
+			is_nullable AS is_nullable,
+			character_maximum_length AS character_maximum_length,
+			numeric_precision AS numeric_precision,
+			column_key AS column_key,
+			extra AS extra
+		FROM information_schema.columns
+		WHERE table_schema = ?
+		AND table_name IN ` + in + `
+		ORDER BY table_name, ordinal_position
+	`
+
+	rows, err := mysql.QueryContext(ctx, query, args...)
+	if err != nil {
+		if mysql.Settings.Verbose {
+			fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTables(%v)\r\n", args[1:])
+			fmt.Fprintf(os.Stderr, "> dbName: %q\r\n", mysql.DbName)
+		}
+
+		return err
+	}
+	defer rows.Close() //nolint:errcheck // Best effort close
+
+	var (
+		tableName string
+		column    Column
+	)
+	for rows.Next() {
+		err = rows.Scan(
+			&tableName,
+			&column.OrdinalPosition,
+			&column.Name,
+			&column.Comment,
+			&column.DataType,
+			&column.DefaultValue,
+			&column.IsNullable,
+			&column.CharacterMaximumLength,
+			&column.NumericPrecision,
+			&column.ColumnKey,
+			&column.Extra,
+		)
+		if err != nil {
+			if mysql.Settings.Verbose {
+				fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTables(%v)\r\n", args[1:])
+				fmt.Fprintf(os.Stderr, "> dbName: %q\r\n", mysql.DbName)
+			}
+
+			return err
+		}
+
+		table, ok := tableByName[tableName]
+		if !ok {
+			if mysql.Settings.Verbose {
+				fmt.Fprintf(os.Stderr, "> Warning: specified table %q not found\r\n", tableName)
+			}
+			continue
+		}
+
+		table.Columns = append(table.Columns, column)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		if mysql.Settings.Verbose {
+			fmt.Fprintf(os.Stderr, "> Error at GetColumnsOfTables(%v)\r\n", args[1:])
+			fmt.Fprintf(os.Stderr, "> dbName: %q\r\n", mysql.DbName)
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 // IsPrimaryKey checks if the column belongs to the primary key.

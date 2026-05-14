@@ -64,11 +64,12 @@ func (app *App) Run(ctx context.Context) error {
 		app.printf("> number of tables: %v\r\n", len(tables))
 	}
 
-	if err = app.db.PrepareGetColumnsOfTableStmt(ctx); err != nil {
-		return fmt.Errorf("could not prepare the get-column-statement: %w", err)
+	tables, err = app.getColumnsOfTables(ctx, tables)
+	if err != nil {
+		return err
 	}
 
-	for _, table := range tables {
+	for i := range tables {
 		select {
 		case <-ctx.Done():
 			if app.settings.Verbose {
@@ -79,28 +80,16 @@ func (app *App) Run(ctx context.Context) error {
 		}
 
 		if app.settings.Verbose {
-			app.printf("> processing table %q\r\n", table.Name)
+			app.printf("> processing table %q\r\n", tables[i].Name)
+			app.printf("\t> number of columns: %v\r\n", len(tables[i].Columns))
 		}
 
-		if err = app.db.GetColumnsOfTable(ctx, table); err != nil {
-			if !app.settings.Force {
-				return fmt.Errorf("could not get columns of table %q: %w", table.Name, err)
-			}
-			app.printf("could not get columns of table %q: %v\n", table.Name, err)
-			continue
-		}
-
-		if app.settings.Verbose {
-			app.printf("\t> number of columns: %v\r\n", len(table.Columns))
-		}
-
-		tableName, content, err := app.createTableStructString(table)
-
+		tableName, content, err := app.createTableStructString(tables[i])
 		if err != nil {
 			if !app.settings.Force {
-				return fmt.Errorf("could not create string for table %q: %w", table.Name, err)
+				return fmt.Errorf("could not create string for table %q: %w", tables[i].Name, err)
 			}
-			app.printf("could not create string for table %q: %v\n", table.Name, err)
+			app.printf("could not create string for table %q: %v\n", tables[i].Name, err)
 			continue
 		}
 
@@ -109,12 +98,12 @@ func (app *App) Run(ctx context.Context) error {
 			fileName = strcase.ToSnake(fileName)
 		}
 
-		err = app.out.Write(fileName, content)
+		err = app.out.Write(fileName, []byte(content))
 		if err != nil {
 			if !app.settings.Force {
-				return fmt.Errorf("could not write struct for table %q: %w", table.Name, err)
+				return fmt.Errorf("could not write struct for table %q: %w", tables[i].Name, err)
 			}
-			app.printf("could not write struct for table %q: %v\n", table.Name, err)
+			app.printf("could not write struct for table %q: %v\n", tables[i].Name, err)
 		}
 	}
 
@@ -123,13 +112,46 @@ func (app *App) Run(ctx context.Context) error {
 	return nil
 }
 
+func (app *App) getColumnsOfTables(ctx context.Context, tables []*database.Table) ([]*database.Table, error) {
+	// We need to honor the force setting: if enabled, we fall back to query the
+	// columns for each table separately and if there was an error, we continue
+	// instead of returning early. This introduces a performance penalty by hitting
+	// the DB harder than needed.
+	if app.settings.Force {
+		tablesToProcess := make([]*database.Table, 0, len(tables))
+		for i := range tables {
+			select {
+			case <-ctx.Done():
+				if app.settings.Verbose {
+					app.printf("> received cancellation: %v\r\n", context.Cause(ctx))
+				}
+				return nil, ctx.Err()
+			default:
+			}
+
+			err := app.db.GetColumnsOfTables(ctx, []*database.Table{tables[i]})
+			if err != nil {
+				app.printf("could not get columns of table %q: %v\n", tables[i].Name, err)
+				continue
+			}
+
+			tablesToProcess = append(tablesToProcess, tables[i])
+		}
+
+		return tablesToProcess, nil
+	}
+
+	err := app.db.GetColumnsOfTables(ctx, tables)
+	if err != nil {
+		return nil, fmt.Errorf("could not get columns of tables: %w", err)
+	}
+
+	return tables, nil
+}
+
 type columnInfo struct {
 	isNullable bool
 	isTemporal bool
-}
-
-func (c columnInfo) isNullableOrTemporal() bool {
-	return c.isNullable || c.isTemporal
 }
 
 func (app *App) createTableStructString(table *database.Table) (string, string, error) {
@@ -165,8 +187,8 @@ func (app *App) createTableStructString(table *database.Table) (string, string, 
 		shouldGenerateComments = app.settings.ShouldGenerateComments()
 		shouldInlineComments   = app.settings.ShouldInlineComments()
 	)
-	for _, column := range table.Columns {
-		columnName, err := app.formatColumnName(column.Name, table.Name)
+	for i := range table.Columns {
+		columnName, err := app.formatColumnName(table.Columns[i].Name, table.Name)
 		if err != nil {
 			return "", "", err
 		}
@@ -181,10 +203,10 @@ func (app *App) createTableStructString(table *database.Table) (string, string, 
 		columns[columnName] = struct{}{}
 
 		if app.settings.VVerbose {
-			app.printf("\t\t> %v\r\n", column.Name)
+			app.printf("\t\t> %v\r\n", table.Columns[i].Name)
 		}
 
-		columnType, col := app.mapDbColumnTypeToGoType(column)
+		columnType, col := app.mapDbColumnTypeToGoType(table.Columns[i])
 
 		// save that we saw types of columns at least once
 		if !columnInfo.isTemporal {
@@ -195,16 +217,16 @@ func (app *App) createTableStructString(table *database.Table) (string, string, 
 		}
 
 		if shouldGenerateComments && !shouldInlineComments {
-			generateLineComments(&structFields, column.Comment)
+			generateLineComments(&structFields, table.Columns[i].Comment)
 		}
 
 		structFields.WriteString(columnName)
 		structFields.WriteString(" ")
 		structFields.WriteString(columnType)
 		structFields.WriteString(" ")
-		structFields.WriteString(app.taggers.GenerateTag(app.db, column))
+		structFields.WriteString(app.taggers.GenerateTag(app.db, table.Columns[i]))
 		if shouldGenerateComments && shouldInlineComments {
-			generateInlineComment(&structFields, column.Comment)
+			generateInlineComment(&structFields, table.Columns[i].Comment)
 		}
 		structFields.WriteString("\n")
 	}
@@ -256,8 +278,7 @@ func (app *App) generateHeader(content *strings.Builder, tableName string) {
 }
 
 func (app *App) generateImports(content *strings.Builder, columnInfo columnInfo) {
-
-	if !columnInfo.isNullableOrTemporal() && !app.settings.IsMastermindStructableRecorder && !app.settings.IsGormModel {
+	if !app.hasImports(columnInfo) {
 		return
 	}
 
@@ -282,6 +303,13 @@ func (app *App) generateImports(content *strings.Builder, columnInfo columnInfo)
 	}
 
 	content.WriteString(")\n\n")
+}
+
+func (app *App) hasImports(columnInfo columnInfo) bool {
+	return (columnInfo.isNullable && app.settings.IsNullTypeSQL()) ||
+		columnInfo.isTemporal ||
+		app.settings.IsMastermindStructableRecorder ||
+		app.settings.IsGormModel
 }
 
 func (app *App) mapDbColumnTypeToGoType(column database.Column) (goType string, columnInfo columnInfo) {
@@ -340,8 +368,9 @@ func (app *App) camelCaseString(s string) string {
 	}
 
 	var cc strings.Builder
-	for _, part := range splitted {
-		cc.WriteString(app.caser.String(strings.ToLower(part)))
+	cc.Grow(len(s))
+	for i := range splitted {
+		cc.WriteString(app.caser.String(strings.ToLower(splitted[i])))
 	}
 	return cc.String()
 }
@@ -354,13 +383,13 @@ func getNullType(settings *settings.Settings, primitive, sql string) string {
 }
 
 func toInitialisms(s string) string {
-	for _, substr := range initialisms {
-		idx := indexCaseInsensitive(s, substr)
+	for i := range initialisms {
+		idx := indexCaseInsensitive(s, initialisms[i])
 		if idx == -1 {
 			continue
 		}
-		toReplace := s[idx : idx+len(substr)]
-		s = strings.ReplaceAll(s, toReplace, substr)
+		toReplace := s[idx : idx+len(initialisms[i])]
+		s = strings.ReplaceAll(s, toReplace, initialisms[i])
 	}
 	return s
 }

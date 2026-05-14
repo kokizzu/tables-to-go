@@ -1,4 +1,4 @@
-.PHONY: all install test integration-test
+.PHONY: all install test integration-test integration-profile
 
 TAG=$(shell git describe --abbrev=0 --tags 2>&1)
 TS=$(shell date '+%b %d %Y %T')
@@ -19,3 +19,6 @@ test:                   ## Runs unit tests with race flag enabled
 
 integration-test:       ## Runs integration tests
 	go test -mod=vendor -tags=integration ./internal/integration_tests/...
+
+integration-profile:    ## Runs opt-in profiling integration tests
+	go test -mod=vendor -tags=integration,profiling ./internal/integration_tests/... -run '^TestIntegrationProfiling$'
